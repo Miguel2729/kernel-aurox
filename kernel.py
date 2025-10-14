@@ -494,8 +494,9 @@ def listar_proc(printp):
                 for pid, info in processos.items():
                     # Mostra se o processo está marcado para parar
                     status = "🛑" if pid in getattr(hw_instan, 'processos_parar', {}) else "✅"
-                    if printp: print(f"{status} PID: {pid}, Nome: {info[1]}")
-                    procs.append([pid, info[1]])
+                    if pid <= 499:
+                        if printp: print(f"{status} PID: {pid}, Nome: {info[1]}")
+                        procs.append([pid, info[1]])
             else:
                 if printp: print("Nenhum processo em execução")
                 return None
