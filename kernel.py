@@ -166,6 +166,7 @@ def pwroff_krnl():
 		
 	print("finalizando...")
 	idle = False
+	quit()
 
 
 
@@ -622,7 +623,7 @@ class hardware:
 		
 		debug_ativo = True  # Controla debug apenas durante inicialização
 		
-		while True:
+		while idle:
 			# Debug apenas durante boot ou a cada 50 verificações
 			if debug and debug_ativo and self.verificacoes % 10 == 0:
 				print(f"📝 Memória tem {len(self.memory)} aplicações:")
