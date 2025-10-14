@@ -60,38 +60,44 @@ def VED(pid, nome, x):
 
 # classe para as distros usarem
 class distro:
-    def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc):
-        global tmp_m, hw_instan
-        os.makedirs("./info", exist_ok=True)
-        with open("./info/nome.txt", "w") as nomed:
-            nomed.write(nome)
-        with open("./info/ver.txt", "w") as verd:
-            verd.write(ver)
-        if not ipc:
-            global IPC
-            global limpar_IPC
-            def sem_ipc():
-            	return None
-            IPC = sem_ipc()
-            limpar_IPC = sem_ipc()
-        
-        for i, nomefs in enumerate(nomesfs):
-            mnt(fs[i], nomefs)
-            configurar_fs(nomefs, cfgfs[i][0], cfgfs[i][1], cfgfs[i][2])
-        
-        for i, nomes in enumerate(services):
-            with open("./code/" + nomes, "r") as code:
-                if nomes != "init.py":
-                    tmp_m.append([code.read(), nomes.replace(".py", "")+" service"])
-                if serv_reset_m:
-                    if 'hw_instan' in globals():
-                        del hw_instan
-                    hw_instan = hardware(tmp_m)
-                else:
-                    hw_instan.memory = tmp_m
-    
-    def return_debug(self):
-        return [hw_instan.ppn, tmp_m, hw_instan.num, hw_instan.mem_prot]
+	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc):
+		global tmp_m, hw_instan
+		os.makedirs("./info", exist_ok=True)
+		with open("./info/nome.txt", "w") as nomed:
+			nomed.write(nome)
+		with open("./info/ver.txt", "w") as verd:
+			verd.write(ver)
+		if not ipc:
+			global IPC
+			global limpar_IPC
+			def sem_ipc():
+				return None
+			IPC = sem_ipc()
+			limpar_IPC = sem_ipc()
+		
+		for i, nomefs in enumerate(nomesfs):
+			mnt(fs[i], nomefs)
+			configurar_fs(nomefs, cfgfs[i][0], cfgfs[i][1], cfgfs[i][2])
+		
+		# ✅ MANTÉM a lógica original de inicialização do hardware
+		for i, nomes in enumerate(services):
+			with open("./code/" + nomes, "r") as code:
+				if nomes != "init.py":
+					tmp_m.append([code.read(), nomes.replace(".py", "")+" service"])
+				if serv_reset_m:
+					if 'hw_instan' in globals():
+						del hw_instan
+					hw_instan = hardware(tmp_m)
+				else:
+					hw_instan.memory = tmp_m
+		
+		# 🆕 CORREÇÃO: Força a CPU a executar serviços pendentes
+		if 'hw_instan' in globals():
+			hw_instan.num = len(tmp_m) - len(services) - 1  # Volta para processar todos
+			print(f"🎯 Executando {len(services)} serviços do sistema")
+	
+	def return_debug(self):
+		return [hw_instan.ppn, tmp_m, hw_instan.num, hw_instan.mem_prot]
 
 def IPC(destino, msg, assinado_por):
 	global hw_instan
