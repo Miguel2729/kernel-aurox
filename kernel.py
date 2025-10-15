@@ -1,7 +1,7 @@
 '''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
-	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, criar_processo_filho, pwroff_krnl, reboot. sem importar o kernel
+	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, criar_processo_filho. sem importar o kernel
 	3. o aurox espera essa estrutura:
 		1. kernel.py - aurox
 		2. system/ - arquivos da distro
@@ -24,22 +24,6 @@ informacoes:
 	9. initapp inicializa apps e nao servicos, nao use initapp para inicializar servicos e nao coloque apps em system/code/, coloque em system/apps
 	10. as distros não sao apenas a classe
 	11. os processos sao executados globalmente dentro do kernel e não como modulos separados, assim, processos não precisam importar kernel e podem interagir com o kernel
-	12. funções públicas:
-		1. initapp
-		2. matar_proc
-		3. listar_proc
-		4. VED
-		5. classe distro
-		6. variável debug
-		7. IPC
-		8. ler_IPC
-		9. limpar_IPC
-		10. pwroff_krnl
-		11. reboot
-		12. criar_processo_filho
-		13. mnt
-		14. umnt
-		15. configurar_fs
 '''
 
 import threading as th
@@ -494,225 +478,184 @@ def criar_processo_filho(pai, nome, codigo):
 	
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
     """
-    Configura e conecta filesystems montados a diversos destinos
-    
+    Conecta um filesystem montado a um destino real do sistema
+    (hardware, diretório, código paralelo ou rede).
+
     Parâmetros:
-    nomefs: nome do filesystem montado
-    tipo_conectar: tipo de conexão ('hardware', 'diretorio', 'codigo_paralelo', 'rede')
-    onde: destino da conexão (path, dispositivo, etc)
-    parametros: dicionário com parâmetros específicos do tipo
-    
+        nomefs: nome do filesystem montado (em /mnt)
+        tipo_conectar: 'hardware', 'diretorio', 'codigo_paralelo', 'rede'
+        onde: destino da conexão (path, dispositivo ou host)
+        parametros: dicionário opcional com parâmetros específicos
+
     Retorna:
-    bool: True se configuração foi bem-sucedida
+        True se configurado com sucesso, False caso contrário.
     """
-    
     if parametros is None:
         parametros = {}
-    
-    # Verifica se o filesystem está montado
+
     mount_point = os.path.join('../mnt', nomefs)
     if not os.path.exists(mount_point):
-        print(f"Erro: Filesystem {nomefs} não está montado")
+        print(f"⛔ Erro: Filesystem '{nomefs}' não está montado.")
         return False
-    
+
     try:
         if tipo_conectar == 'hardware':
             return _conectar_hardware(nomefs, onde, parametros, mount_point)
-            
         elif tipo_conectar == 'diretorio':
             return _conectar_diretorio(nomefs, onde, parametros, mount_point)
-            
         elif tipo_conectar == 'codigo_paralelo':
             return _conectar_codigo_paralelo(nomefs, onde, parametros, mount_point)
-            
         elif tipo_conectar == 'rede':
             return _conectar_rede(nomefs, onde, parametros, mount_point)
-            
         else:
-            print(f"Erro: Tipo de conexão '{tipo_conectar}' não suportado")
+            print(f"⛔ Tipo de conexão '{tipo_conectar}' não reconhecido.")
             return False
-            
     except Exception as e:
         print(f"Erro ao configurar {nomefs}: {e}")
         return False
 
+
 def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
-    """Conecta FS a dispositivo de hardware simulado"""
-    
+    """
+    Conecta o FS a um dispositivo de hardware real, se existir.
+    Exemplo: /dev/ttyS0, /dev/audio, /dev/usbX.
+    """
     print(f"🔌 Conectando {nomefs} ao hardware {dispositivo}")
-    
-    # Simula diferentes tipos de hardware
-    if dispositivo == 'serial':
-        baud_rate = parametros.get('baud_rate', 9600)
-        print(f"   Configurando serial: {baud_rate} baud")
-        
-        # Cria arquivo de controle do serial
-        with open(os.path.join(mount_point, '.serial_config'), 'w') as f:
-            f.write(f"device=serial\nbaud_rate={baud_rate}\n")
-            
-    elif dispositivo == 'usb':
-        vid = parametros.get('vendor_id', '0x1234')
-        pid = parametros.get('product_id', '0x5678')
-        print(f"   Configurando USB: VID={vid}, PID={pid}")
-        
-        with open(os.path.join(mount_point, '.usb_config'), 'w') as f:
-            f.write(f"device=usb\nvendor_id={vid}\nproduct_id={pid}\n")
-            
-    elif dispositivo == 'audio':
-        sample_rate = parametros.get('sample_rate', 44100)
-        print(f"   Configurando áudio: {sample_rate}Hz")
-        
-        with open(os.path.join(mount_point, '.audio_config'), 'w') as f:
-            f.write(f"device=audio\nsample_rate={sample_rate}\n")
-    
-    else:
-        print(f"   Dispositivo genérico: {dispositivo}")
-        with open(os.path.join(mount_point, '.hardware_config'), 'w') as f:
-            f.write(f"device={dispositivo}\n")
-    
-    return True
+
+    if not os.path.exists(dispositivo):
+        print(f"⚠️ Dispositivo {dispositivo} não encontrado — criando entrada simulada.")
+        with open(os.path.join(mount_point, f"{os.path.basename(dispositivo)}.dev"), "w") as f:
+            f.write(f"dispositivo={dispositivo}\n")
+        return True
+
+    try:
+        destino = os.path.join(mount_point, os.path.basename(dispositivo))
+        if os.path.isfile(dispositivo):
+            shutil.copy2(dispositivo, destino)
+        elif os.path.isdir(dispositivo):
+            # copia o conteúdo do hardware para dentro do FS
+            for item in os.listdir(dispositivo):
+                src = os.path.join(dispositivo, item)
+                dst = os.path.join(destino, item)
+                if os.path.isfile(src):
+                    shutil.copy2(src, dst)
+        print(f"✅ {dispositivo} vinculado a {mount_point}")
+        return True
+    except Exception as e:
+        print(f"⛔ Erro ao conectar {dispositivo}: {e}")
+        return False
+
 
 def _conectar_diretorio(nomefs, diretorio, parametros, mount_point):
-    """Conecta FS a um diretório do sistema"""
-    
+    """
+    Conecta o FS a um diretório real do sistema, com suporte a espelhamento contínuo.
+    """
     print(f"📁 Conectando {nomefs} ao diretório {diretorio}")
-    
-    # Verifica se diretório existe
+
     if not os.path.exists(diretorio):
         if parametros.get('criar_diretorio', False):
             os.makedirs(diretorio)
             print(f"   Diretório {diretorio} criado")
         else:
-            print(f"   Erro: Diretório {diretorio} não existe")
+            print(f"⛔ Diretório {diretorio} não existe.")
             return False
-    
-    # Cria link simulado ou sincronização
-    sync_mode = parametros.get('sync_mode', 'readonly')
-    
-    with open(os.path.join(mount_point, '.dir_connection'), 'w') as f:
-        f.write(f"target_dir={diretorio}\nsync_mode={sync_mode}\n")
-    
-    # Se for modo espelho, copia conteúdo inicial
-    if sync_mode == 'mirror':
-        try:
-            for item in os.listdir(diretorio):
-                src = os.path.join(diretorio, item)
-                dst = os.path.join(mount_point, item)
-                if os.path.isfile(src):
-                    shutil.copy2(src, dst)
-                elif os.path.isdir(src):
-                    shutil.copytree(src, dst)
-            print(f"   Conteúdo espelhado de {diretorio}")
-        except Exception as e:
-            print(f"   Aviso: Não foi possível espelhar conteúdo: {e}")
-    
-    return True
 
-def _conectar_codigo_paralelo(nomefs, codigo_file, parametros, mount_point):
-    """Conecta FS a código que modifica em paralelo (restrito ao FS)"""
-    
-    print(f"⚡ Conectando {nomefs} a código paralelo: {codigo_file}")
-    
-    # Verifica se arquivo de código existe
-    if not os.path.exists(codigo_file):
-        print(f"   Erro: Arquivo de código {codigo_file} não existe")
+    modo = parametros.get('sync_mode', 'readonly')
+
+    # mirror em tempo real (sincronização contínua)
+    if modo == 'mirror':
+        print(f"🔄 Espelhamento contínuo ativado entre {diretorio} ↔ {mount_point}")
+
+        def espelhar_continuamente():
+            while os.path.exists(mount_point):
+                try:
+                    _sincronizar_diretorios(diretorio, mount_point)
+                    _sincronizar_diretorios(mount_point, diretorio)
+                except Exception as e:
+                    if debug:
+                        print(f"Erro em mirror {nomefs}: {e}")
+                time.sleep(parametros.get('intervalo', 2))
+
+        thread_mirror = th.Thread(target=espelhar_continuamente, daemon=True)
+        thread_mirror.start()
+        print("   🪞 Espelhamento contínuo iniciado.")
+        return True
+
+    elif modo == 'readonly':
+        try:
+            _sincronizar_diretorios(diretorio, mount_point, somente_leitura=True)
+            print(f"✅ {nomefs} conectado em modo somente leitura.")
+            return True
+        except Exception as e:
+            print(f"⛔ Erro ao sincronizar: {e}")
+            return False
+    else:
+        print(f"⚠️ Modo desconhecido '{modo}'. Use 'readonly' ou 'mirror'.")
         return False
-    
-    # Lê o código
-    try:
-        with open(codigo_file, 'r') as f:
-            codigo = f.read()
-    except Exception as e:
-        print(f"   Erro ao ler código: {e}")
-        return False
-    
-    # Verifica restrições de segurança do código
-    if not _codigo_eh_seguro(codigo, mount_point):
-        print(f"   Erro: Código tenta acessar fora do filesystem")
-        return False
-    
-    # Configura execução paralela
-    intervalo = parametros.get('intervalo', 5)  # segundos
-    
-    with open(os.path.join(mount_point, '.parallel_code'), 'w') as f:
-        f.write(f"code_file={codigo_file}\ninterval={intervalo}\n")
-    
-    # Inicia thread para executar código periodicamente
-    def executar_codigo_paralelo():
-        while os.path.exists(mount_point):  # Enquanto FS estiver montado
-            try:
-                # Executa código no contexto do filesystem
-                old_cwd = os.getcwd()
-                os.chdir(mount_point)
-                
-                # Cria ambiente restrito
-                restricted_globals = {
-                    '__builtins__': {
-                        'print': print,
-                        'len': len,
-                        'str': str,
-                        'int': int,
-                        'os': __import__('os'),
-                        'time': __import__('time')
-                    },
-                    'fs_path': mount_point
-                }
-                
-                exec(codigo, restricted_globals)
-                os.chdir(old_cwd)
-                
-            except Exception as e:
-                if debug:
-                    print(f"   Erro em código paralelo {codigo_file}: {e}")
-                os.chdir(old_cwd)
-            
-            time.sleep(intervalo)
-    
-    # Inicia thread
-    thread_paralela = th.Thread(target=executar_codigo_paralelo, daemon=True)
-    thread_paralela.start()
-    
-    print(f"   Código paralelo iniciado (intervalo: {intervalo}s)")
-    return True
+
+
+def _sincronizar_diretorios(origem, destino, somente_leitura=False):
+    """
+    Sincroniza o conteúdo de dois diretórios.
+    Se somente_leitura=True, só copia de origem → destino.
+    """
+    if not os.path.exists(destino):
+        os.makedirs(destino, exist_ok=True)
+
+    for item in os.listdir(origem):
+        src = os.path.join(origem, item)
+        dst = os.path.join(destino, item)
+
+        try:
+            if os.path.isfile(src):
+                if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
+                    shutil.copy2(src, dst)
+            elif os.path.isdir(src):
+                _sincronizar_diretorios(src, dst, somente_leitura)
+        except Exception as e:
+            if debug:
+                print(f"Erro ao copiar {item}: {e}")
+
+    # no modo bidirecional (mirror), sincroniza deletando arquivos inexistentes
+    if not somente_leitura:
+        for item in os.listdir(destino):
+            if not os.path.exists(os.path.join(origem, item)):
+                try:
+                    caminho = os.path.join(destino, item)
+                    if os.path.isdir(caminho):
+                        shutil.rmtree(caminho)
+                    else:
+                        os.remove(caminho)
+                except Exception as e:
+                    if debug:
+                        print(f"Erro ao remover {item}: {e}")
+
 
 def _conectar_rede(nomefs, endpoint, parametros, mount_point):
-    """Conecta FS a recurso de rede"""
-    
+    """
+    Conecta FS a um recurso de rede real via comandos básicos de rede.
+    (Não cria sockets persistentes — apenas valida o acesso.)
+    """
     print(f"🌐 Conectando {nomefs} a {endpoint}")
-    
+
     protocolo = parametros.get('protocolo', 'http')
     porta = parametros.get('porta', 80)
-    
-    with open(os.path.join(mount_point, '.network_config'), 'w') as f:
-        f.write(f"endpoint={endpoint}\nprotocol={protocolo}\nport={porta}\n")
-    
-    # Simula conexão de rede
-    if protocolo == 'http':
-        print(f"   Configurado HTTP para {endpoint}:{porta}")
-    elif protocolo == 'ftp':
-        print(f"   Configurado FTP para {endpoint}:{porta}")
-    elif protocolo == 'nfs':
-        print(f"   Configurado NFS para {endpoint}")
-    
-    return True
 
-def _codigo_eh_seguro(codigo, mount_point):
-    """Verifica se código só acessa dentro do filesystem"""
-    
-    verificacoes_perigosas = [
-        "os.chdir('..')",
-        "os.chdir('/')",
-        "shutil.rmtree('/')",
-        "os.remove('/')",
-        f"os.chdir('{mount_point}')"  # Tenta escapar via path absoluto
-    ]
-    
-    for perigo in verificacoes_perigosas:
-        if perigo in codigo:
-            return False
-    
-    return True
-    
+    # tentativa simples de verificação de rede
+    try:
+        import socket
+        host = endpoint.replace("http://", "").replace("https://", "").split("/")[0]
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        sock.connect((host, porta))
+        sock.close()
+        print(f"✅ Conexão {protocolo.upper()} com {endpoint}:{porta} bem-sucedida.")
+        return True
+    except Exception as e:
+        print(f"⚠️ Falha ao conectar em {endpoint}:{porta} — {e}")
+        return False
+
+
 
 # Mantenha as funções matar_proc e listar_proc como estão, mas adicione:
 
