@@ -43,12 +43,13 @@ A classe `distro` é usada pelas distribuições Aurox para definir nome, versã
 
 ```python
 testsOS = distro(
-	"MinhaDistro", "1.0",
-	["rootfs"], ["sistema"],
-	[[("diretorio", "/tmp", {"sync_mode": "mirror"})]],
-	["vfs.py", "audio.py", "tools.py"],
-	serv_reset_m=None,
+	nome="MinhaDistro", ver="1.0",
+	fs=["rootfs"], nomefs=["sistema"],
+	cfgfs=[[("diretorio", "/tmp", {"sync_mode": "mirror"})]],
+	services=["vfs.py", "audio.py", "tools.py"],
+	serv_reset_m=False,
 	ipc=True
+	ufs=True # significa "umount filesystems on shutdown"
 )
 ```
 
@@ -84,10 +85,10 @@ print("✅ Sistema inicializado com sucesso!")
 ### 🧠 Gerenciamento de Processos
 
 ```python
-matar_proc(pid, log=True)
+matar_proc(pid, log)
 # Mata um processo pelo PID
 
-listar_proc(printp=True)
+listar_proc(printp)
 # Lista todos os processos ativos
 # Retorna: [[pid, nome], ...]
 ```
@@ -107,10 +108,15 @@ mnt(fs, nomefs)
 
 umnt(nomefs)
 # Desmonta um filesystem
-
 configurar_fs(nomefs, tipo, destino, parametros)
 # Configura um filesystem montado
 # Tipos: 'hardware', 'diretorio', 'codigo_paralelo', 'rede'
+# Parâmetros por tipo:
+#   'hardware': baud_rate, vendor_id, product_id, sample_rate
+#   'diretorio': sync_mode, criar_diretorio
+#   'codigo_paralelo': intervalo
+#   'rede': protocolo, porta, timeout
+# para obter mais informações pode olhar o código de kernel.py, não tem problema, é licença MIT
 ```
 
 ---
@@ -118,8 +124,8 @@ configurar_fs(nomefs, tipo, destino, parametros)
 ### 🔗 Comunicação entre Processos (IPC)
 
 ```python
-IPC(destino, msg, assinado_por)
-# Envia mensagem IPC para outro processo
+IPC(destino, msg, assina_por_pid, assina_por_nome)
+# Envia mensagem IPC para outro processo, assina_por_pid é o pid do remetente, assina_por_nome é o nome do remetente
 
 ler_IPC(pid)
 # Lê mensagens recebidas pelo processo
@@ -142,7 +148,7 @@ VED(pid, nome, x)
 exemplo:
 ```
 # Obter nome a partir do PID
-ok, nome = VED(0, None, "pid")
+ok, nome = VED(1, None, "pid")
 
 # Obter PID a partir do nome
 ok, pid = VED(None, "init", "name")
@@ -152,9 +158,9 @@ ok, pid = VED(None, "init", "name")
 
 ## ⚠️ Avisos Importantes
 
-- ⚙️ Não use em produção — é um kernel educacional.  
+- ⚙️ pode ser usado em contextos educacionais, Simulações e produtivos
 - 🧪 Teste extensivamente os serviços antes de distribuir.  
-- 🔁 Evite loops infinitos sem condição de saída.  
+- 🔁 while True em processos são modificados pelo kernel para parar em caso de encerrar o processo
 - 🧹 Use `matar_proc()` e `pwroff_krnl()` para encerrar processos corretamente.  
 - 🔐 Verifique permissões do arquivo `shell`.
 - ✅️ os processos são executados dentro do kernel em contexto global, não como módulos separados, pode se comunicar(usar funções do kernel) com o kernel sem importar
@@ -183,6 +189,8 @@ encerrando processos...
 ⚠️ tools service encerrado
 ✅ ppn limpado
 ✅ limpado
+Desmontando filesystems...
+✅️ filesystems Desmontados
 finalizando...
 ```
 
