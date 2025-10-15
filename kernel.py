@@ -1,7 +1,7 @@
 '''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
-	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC, VED)
+	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED)
 	3. o aurox espera essa estrutura:
 		1. kernel.py - aurox
 		2. system/ - arquivos da distro
@@ -80,29 +80,170 @@ class distro:
 			configurar_fs(nomefs, cfgfs[i][0], cfgfs[i][1], cfgfs[i][2])
 		
 		# ✅ MANTÉM a lógica original de inicialização do hardware
+		if debug: print(f"⚙️ servicos da distro: {len(services)}")
+		service_errors = 0
 		for i, nomes in enumerate(services):
 			with open("./code/" + nomes, "r") as code:
+				if debug: print(f"📥 lendo {nomes}...")
 				if nomes != "init.py":
-					tmp_m.append([code.read(), nomes.replace(".py", "")+" service"])
-				if serv_reset_m:
-					if 'hw_instan' in globals():
-						del hw_instan
-					hw_instan = hardware(tmp_m)
+					try:
+						tmp_m.append([code.read(), nomes.replace(".py", "")+" service"])
+					except Exception as e:
+						if debug: print(f"⛔️ falha ao adicionar serviço '{nome}': {e}")
+						service_errors += 1
+						continue
+					try:
+						if serv_reset_m:
+							if 'hw_instan' in globals():
+								del hw_instan
+					except NameError:
+						if debug: print("⛔️hw_instan indisponivel, provalmente foi deletado antes da configuracao")
+						service_erros = len(services)
+						break
+					try:
+						hw_instan = hardware(tmp_m)
+					except Exception as e:
+						if debug: print(f"⛔️erro desconhecido: {e}")
+						services_errors += 1
 				else:
-					hw_instan.memory = tmp_m
+					try:
+						hw_instan.memory = tmp_m
+					except Exception as e:
+						print(f"⛔️erro desconhecido: {e}")
+						service_errors += 1
+		total_sucesso = len(services) - service_errors
+		if debug: print(f"⚙️ {total_sucesso} servicos adicionados com sucessso, {service_errors} deram erro")
 		
 		# 🆕 CORREÇÃO: Força a CPU a executar serviços pendentes
 		if 'hw_instan' in globals():
 			hw_instan.num = len(tmp_m) - len(services) - 1  # Volta para processar todos
 			print(f"🎯 Executando {len(services)} serviços do sistema")
+		self.servic = services
+		self.ipccfg = ipc
 	
 	def return_debug(self):
-		return [hw_instan.ppn, tmp_m, hw_instan.num, hw_instan.mem_prot]
+		return [hw_instan.ppn, tmp_m, hw_instan.num, hw_instan.mem_prot, self.servic, self.ipccfg]
+
+def PHC(modo="auto", pid=None):
+    """
+    Process Health Check - Verifica a saúde dos processos
+    
+    Parâmetros:
+    modo: "auto" (verifica todos), "single" (verifica apenas um PID)
+    pid: Quando modo="single", o PID específico para verificar
+    
+    Retorna:
+    dict: Relatório de saúde dos processos
+    """
+    global hw_instan
+    
+    if 'hw_instan' not in globals():
+        return {"erro": "Sistema não inicializado"}
+    
+    relatorio = {
+        "timestamp": time.time(),
+        "processos_saudaveis": 0,
+        "processos_problematicos": 0,
+        "processos_travados": [],
+        "processos_zumbis": [],
+        "detalhes": {}
+    }
+    
+    try:
+        # Modo single - verifica apenas um processo
+        if modo == "single" and pid is not None:
+            if pid not in hw_instan.ppn:
+                return {"erro": f"PID {pid} não encontrado"}
+            
+            processos_verificar = [pid]
+        else:
+            # Modo auto - verifica todos os processos
+            processos_verificar = list(hw_instan.ppn.keys())
+        
+        for pid in processos_verificar:
+            info = hw_instan.ppn[pid]
+            nome = info[1]
+            status = "saudavel"
+            problemas = []
+            
+            # Verificação 1: Processo marcado para parar mas ainda ativo
+            if pid in hw_instan.processos_parar:
+                problemas.append("marcado_para_parar_mas_ainda_ativo")
+                status = "problematico"
+            
+            # Verificação 2: Thread correspondente não está mais viva
+            thread_index = next((i for i, t in enumerate(hw_instan.threads) 
+                              if t.is_alive() and i == pid), None)
+            if thread_index is None and pid not in hw_instan.processos_parar:
+                problemas.append("thread_morta")
+                status = "travado"
+                relatorio["processos_travados"].append(pid)
+            
+            # Verificação 3: Processo sem atividade por muito tempo (simplificado)
+            # (Em um sistema real, verificaria last_activity_time)
+            
+            # Verificação 4: PID muito alto pode indicar processo órfão
+            if pid > 499 and "init" not in nome and "service" not in nome:
+                problemas.append("possivel_zumbi")
+                relatorio["processos_zumbis"].append(pid)
+                status = "zumbi"
+            
+            # Atualizar relatório
+            relatorio["detalhes"][pid] = {
+                "nome": nome,
+                "status": status,
+                "problemas": problemas,
+                "memoria_index": info[3] if len(info) > 3 else "N/A"
+            }
+            
+            if status == "saudavel":
+                relatorio["processos_saudaveis"] += 1
+            else:
+                relatorio["processos_problematicos"] += 1
+        
+        # Ação corretiva automática se solicitado
+        if modo == "auto" and relatorio["processos_travados"]:
+            if debug: 
+                print(f"🔄 PHC: Encerrando {len(relatorio['processos_travados'])} processos travados")
+            
+            for pid_travado in relatorio["processos_travados"]:
+                try:
+                    matar_proc(pid_travado, False)
+                    if debug: 
+                        print(f"✅ PHC: Processo {pid_travado} encerrado")
+                except Exception as e:
+                    if debug: 
+                        print(f"❌ PHC: Erro ao encerrar {pid_travado}: {e}")
+        
+        return relatorio
+        
+    except Exception as e:
+        return {"erro": f"Falha no PHC: {str(e)}"}
+
+
+
+phc_service = """
+while True:
+	time.sleep(8)
+	relat = PHC('auto')
+	existe, info = VED(None, 'init', 'name')
+	if existe:
+		IPC(info, f"relatorio_phc: {relat}", "PHC kernel service")
+	elif not existe:
+		existe, info = VED(None, "sys_msg service", "name")
+		if existe:
+			IPC(info, f"relatorio: {relat}", "PHC kernel service")
+		else:
+			pass
+	else:
+		pass
+
+
+"""
 
 def IPC(destino, msg, assinado_por):
 	global hw_instan
-	hw_instan[destino][2][0] = assinado_por
-	hw_instan[destino][2][1]= msg
+	hw_instan[destino][2] = [assinado_por, msg]
 
 def limpar_IPC(pid):
     if pid in hw_instan.ppn:
@@ -174,9 +315,14 @@ print(f"status_idle: {str(idle)}")
 def initapp(app, reset_m, log):
 	global tmp_m, hw_instan
 	
-	# 🆕 Verifica se há slots disponíveis ANTES de tentar carregar
-	slots_livres = len(list(filter(lambda x: x == False, hw_instan.mem_prot)))
-	if slots_livres == 0:
+	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
+	slot_disponivel = None
+	for i in range(len(hw_instan.mem_prot)):
+		if not hw_instan.mem_prot[i]:  # Slot livre
+			slot_disponivel = i
+			break
+	
+	if slot_disponivel is None:
 		if log: print("❌ Memória cheia - não é possível carregar app")
 		return
 	
@@ -187,7 +333,6 @@ def initapp(app, reset_m, log):
 		if reset_m:
 			# Reset mas mantém a instância do hardware
 			tmp_m = [[codigo, app]]
-			# Atualiza a instância existente sem recriar
 			hw_instan.memory = tmp_m
 			hw_instan.num = 0
 			hw_instan.ppn = {}
@@ -196,20 +341,25 @@ def initapp(app, reset_m, log):
 			hw_instan.old_sloot_f = []
 			if log: print("🧹 Memória resetada - novo app carregado")
 		else:
-			# 🎯 CORREÇÃO: Apenas prepara e deixa a CPU executar
-			memory_index = len(tmp_m)
-			tmp_m.append([codigo, app])
-			hw_instan.memory = tmp_m
-			hw_instan.num = len(tmp_m) - 2
+			# 🆕 CORREÇÃO: Usar o slot disponível encontrado
+			memory_index = slot_disponivel
 			
-			# 🆕 NÃO marca mem_prot como True ainda - deixa a CPU fazer isso
-			# 🆕 NÃO cria thread ainda - deixa a CPU fazer isso
+			# Garantir que tmp_m tenha espaço suficiente
+			while len(tmp_m) <= memory_index:
+				tmp_m.append([None, None])  # Preencher com placeholders
+			
+			# Colocar o app no slot livre
+			tmp_m[memory_index] = [codigo, app]
+			hw_instan.memory = tmp_m
+			
+			# 🆕 Forçar a CPU a processar a partir deste slot
+			if memory_index <= hw_instan.num:
+				hw_instan.num = memory_index - 1
 			
 			b = random.randint(1000, 9999)
-			hw_instan.ppn[b] = [b, app, [], memory_index]  # Guarda memory_index para referência
+			hw_instan.ppn[b] = [b, app, [], memory_index]
 			
-			if log: print(f"📱 App {app} carregado (PID {b}) - aguardando execução pela CPU")
-			
+			if log: print(f"📱 App {app} carregado no slot {memory_index} (PID {b}) - aguardando execução pela CPU")
 	
 	os.chdir("..")
 			
@@ -442,6 +592,7 @@ def matar_proc(pid, log):
         if 'hw_instan' in globals():
             # 1. Marcar processo para parar
             hw_instan.processos_parar[pid] = True
+            hw_instan.old_sloot_f.append(pid)
             
             # 2. CORREÇÃO: Processos com PID >= 500 não usam slots de memória
             memory_index = None
@@ -493,10 +644,10 @@ def listar_proc(printp):
                 if printp: print("Processos em execução:")
                 for pid, info in processos.items():
                     # Mostra se o processo está marcado para parar
-                    status = "🛑" if pid in getattr(hw_instan, 'processos_parar', {}) else "✅"
+                    status = "🛑" if pid in getattr(hw_instan, 'processos_parar', {}) else ""
                     if pid <= 499:
-                        if printp: print(f"{status} PID: {pid}, Nome: {info[1]}")
-                        procs.append([pid, info[1]])
+                    	if printp: print(f"{status} PID: {pid}, Nome: {info[1]}")
+                    	procs.append([pid, info[1]])
             else:
                 if printp: print("Nenhum processo em execução")
                 return None
@@ -641,12 +792,11 @@ class hardware:
 						print("✅ Todos os processos executados - debug silenciado")
 					continue
 				
-				try:
-					if self.old_sloot_f and min(self.old_sloot_f) > i:
-						i = min(self.old_sloot_f)
-				except ValueError:
-					pass
-				
+				# Pular slots já protegidos (em execução)
+				if self.mem_prot[i]:
+					continue
+					
+				# Pular slots já processados 
 				if i <= self.num:
 					continue
 				
@@ -689,14 +839,16 @@ if {pid} in hw_instan.processos_parar:
 						return thread_func
 					
 					self.thread_code[self.procn] = self.memory[i][0]
-					self.ppn[self.procn] = [self.procn, self.memory[i][1], []]
+					self.ppn[self.procn] = [self.procn, self.memory[i][1], [], i]  # 🆕 Adiciona memory_index
 					thread = th.Thread(target=create_thread(self.procn))
 					thread.start()
 					self.procn +=1
 					self.threads.append(thread)
+					
+					# 🆕 CORREÇÃO CRÍTICA: Só definir mem_prot como True DEPOIS que a thread foi criada com sucesso
 					print(f"🎯 ATUALIZANDO mem_prot[{i}] = True (antes: {self.mem_prot[i]})")
 					self.mem_prot[i] = True
-					print(f"✅ mem_prot[{i}] = {self.mem_prot[i]} (depois)")
+					print(f"✅ mem_prot[{i}] = {self.mem_prot[i]} (depois) - Processo PID {self.procn-1} iniciado")
 					
 					if self.old_sloot_f and i in self.old_sloot_f:
 						self.old_sloot_f.remove(i)
@@ -708,8 +860,9 @@ if {pid} in hw_instan.processos_parar:
 					processos_executados = True
 					
 				except Exception as e:
+					# 🆕 CORREÇÃO: Se houve erro, NÃO marcar mem_prot como True
 					if debug and debug_ativo: 
-						print(f"❌ Erro no item {i}: {e}")
+						print(f"❌ Erro no item {i}: {e} - Slot {i} NÃO será marcado como protegido")
 						import traceback
 						traceback.print_exc()
 			
@@ -720,7 +873,6 @@ if {pid} in hw_instan.processos_parar:
 			
 			self.verificacoes += 1
 			time.sleep(1)
-
 				
 if __name__ == "__main__":
 	if os.path.exists("./system"):
@@ -739,6 +891,7 @@ if __name__ == "__main__":
 			quit()
 	
 	tmp_m = []
+	tmp_m.append([phc_service, "PHC Kernel Service"])
 	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
