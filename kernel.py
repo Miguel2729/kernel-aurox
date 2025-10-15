@@ -1,7 +1,7 @@
 '''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
-	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED)
+	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, criar_processo_filho. sem importar o kernel
 	3. o aurox espera essa estrutura:
 		1. kernel.py - aurox
 		2. system/ - arquivos da distro
@@ -42,6 +42,7 @@ def boot_anim():
 			os.system("clear")
 
 
+# (verification of existing process)
 def VED(pid, nome, x):
 	global hw_instan
 	if x == "pid":
@@ -57,69 +58,92 @@ def VED(pid, nome, x):
 			if info[1] == nome:  # info[1] é o nome do processo
 				return (True, pid_atual)
 		return (False, None)
-
+distro_cfg = False
+# (umount filesystems on shutdown)
+UFS = None
 # classe para as distros usarem
 class distro:
-	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc):
-		global tmp_m, hw_instan
-		os.makedirs("./info", exist_ok=True)
-		with open("./info/nome.txt", "w") as nomed:
-			nomed.write(nome)
-		with open("./info/ver.txt", "w") as verd:
-			verd.write(ver)
-		if not ipc:
-			global IPC
-			global limpar_IPC
-			def sem_ipc():
-				return None
-			IPC = sem_ipc()
-			limpar_IPC = sem_ipc()
+	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs):
+		global tmp_m, hw_instan, distro_cfg, UFS
+		if not distro_cfg:
+			os.makedirs("./info", exist_ok=True)
+			with open("./info/nome.txt", "w") as nomed:
+				nomed.write(nome)
+			with open("./info/ver.txt", "w") as verd:
+				verd.write(ver)
+			if not ipc:
+				global IPC
+				global limpar_IPC
+				def sem_ipc():
+					return None
+				IPC = sem_ipc()
+				limpar_IPC = sem_ipc()
+			if debug: print(f"IPC = {ipc}")
+			if debug: print(f"💿 distro tem {len(nomesfs)} filesystems")
+			for i, nomefs in enumerate(nomesfs):
+				if debug: print(f"💽 montando {nomefs}({i})...")
+				try:
+					mnt(fs[i], nomefs)
+				except Exception as e:
+					if debug:
+						print(f"⛔️erro ao montar {nomefs}: {e}")
+					else:
+						print(f"⛔️erro: {e}")
+						quit()
+				if debug: print(f"⚙️ configurando {nomefs}")
+				try:
+					configurar_fs(nomefs, cfgfs[i][0], cfgfs[i][1], cfgfs[i][2])
+				except Exception as e:
+					if debug:
+						print(f"⛔️erro ao configurar {nomefs}: {e}")
+					else:
+						print(f"⛔️erro: {e}")
+						quit()
+				if debug: print(f"✅ montagem e configuração de {nomefs} concluida")
 		
-		for i, nomefs in enumerate(nomesfs):
-			mnt(fs[i], nomefs)
-			configurar_fs(nomefs, cfgfs[i][0], cfgfs[i][1], cfgfs[i][2])
+			# ✅ MANTÉM a lógica original de inicialização do hardware
+			if debug: print(f"⚙️ servicos da distro: {len(services)}")
+			service_errors = 0
+			for i, nomes in enumerate(services):
+				with open("./code/" + nomes, "r") as code:
+					if debug: print(f"📥 lendo {nomes}...")
+					if nomes != "init.py":
+						try:
+							tmp_m.append((code.read(), nomes.replace(".py", "")+" service"))
+						except Exception as e:
+							if debug: print(f"⛔️ falha ao adicionar serviço '{nome}': {e}")
+							service_errors += 1
+							continue
+						try:
+							if serv_reset_m:
+								if 'hw_instan' in globals():
+									del hw_instan
+						except NameError:
+							if debug: print("⛔️hw_instan indisponivel, provalmente foi deletado antes da configuracao")
+							service_erros = len(services)
+							break
+						try:
+							hw_instan = hardware(tmp_m)
+						except Exception as e:
+							if debug: print(f"⛔️erro desconhecido: {e}")
+							services_errors += 1
+					else:
+						try:
+							hw_instan.memory = tmp_m
+						except Exception as e:
+							print(f"⛔️erro desconhecido: {e}")
+							service_errors += 1
+			total_sucesso = len(services) - service_errors
+			if debug: print(f"⚙️ {total_sucesso} servicos adicionados com sucessso, {service_errors} deram erro")
 		
-		# ✅ MANTÉM a lógica original de inicialização do hardware
-		if debug: print(f"⚙️ servicos da distro: {len(services)}")
-		service_errors = 0
-		for i, nomes in enumerate(services):
-			with open("./code/" + nomes, "r") as code:
-				if debug: print(f"📥 lendo {nomes}...")
-				if nomes != "init.py":
-					try:
-						tmp_m.append([code.read(), nomes.replace(".py", "")+" service"])
-					except Exception as e:
-						if debug: print(f"⛔️ falha ao adicionar serviço '{nome}': {e}")
-						service_errors += 1
-						continue
-					try:
-						if serv_reset_m:
-							if 'hw_instan' in globals():
-								del hw_instan
-					except NameError:
-						if debug: print("⛔️hw_instan indisponivel, provalmente foi deletado antes da configuracao")
-						service_erros = len(services)
-						break
-					try:
-						hw_instan = hardware(tmp_m)
-					except Exception as e:
-						if debug: print(f"⛔️erro desconhecido: {e}")
-						services_errors += 1
-				else:
-					try:
-						hw_instan.memory = tmp_m
-					except Exception as e:
-						print(f"⛔️erro desconhecido: {e}")
-						service_errors += 1
-		total_sucesso = len(services) - service_errors
-		if debug: print(f"⚙️ {total_sucesso} servicos adicionados com sucessso, {service_errors} deram erro")
-		
-		# 🆕 CORREÇÃO: Força a CPU a executar serviços pendentes
-		if 'hw_instan' in globals():
-			hw_instan.num = len(tmp_m) - len(services) - 1  # Volta para processar todos
-			print(f"🎯 Executando {len(services)} serviços do sistema")
-		self.servic = services
-		self.ipccfg = ipc
+			# 🆕 CORREÇÃO: Força a CPU a executar serviços pendentes
+			if 'hw_instan' in globals():
+				hw_instan.num = len(tmp_m) - len(services) - 1  # Volta para processar todos
+				print(f"🎯 Executando {len(services)} serviços do sistema")
+			self.servic = services
+			self.ipccfg = ipc
+		distro_cfg = True
+		UFS = ufs
 	
 	def return_debug(self):
 		return [hw_instan.ppn, tmp_m, hw_instan.num, hw_instan.mem_prot, self.servic, self.ipccfg]
@@ -224,15 +248,15 @@ def PHC(modo="auto", pid=None):
 
 phc_service = """
 while True:
-	time.sleep(8)
+	time.sleep(10)
 	relat = PHC('auto')
 	existe, info = VED(None, 'init', 'name')
 	if existe:
-		IPC(info, f"relatorio_phc: {relat}", "PHC kernel service")
+		IPC(info, f"relatorio_phc: {relat}", 0, "PHC Kernel Service")
 	elif not existe:
 		existe, info = VED(None, "sys_msg service", "name")
 		if existe:
-			IPC(info, f"relatorio: {relat}", "PHC kernel service")
+			IPC(info, f"relatorio_phc: {relat}", 0, "PHC Kernel Service")
 		else:
 			pass
 	else:
@@ -241,43 +265,32 @@ while True:
 
 """
 
-def IPC(destino, msg, assinado_por):
+def IPC(destino, msg, assina_por_pid, assina_por_nome):
 	global hw_instan
-	hw_instan[destino][2] = [assinado_por, msg]
+	hw_instan.ppn[destino][2] = [[assina_por_pid, assina_por_nome], msg]
 
 def limpar_IPC(pid):
+    global hw_instan
     if pid in hw_instan.ppn:
         hw_instan.ppn[pid][2] = []
         
 
 def ler_IPC(pid):
-    """
-    Lê a mensagem IPC mais recente para um processo
-    
-    Parâmetros:
-    pid: PID do processo para ler a mensagem
-    
-    Retorna:
-    tuple: (remetente, mensagem) ou None se não houver mensagem
-    """
-    try:
-        if 'hw_instan' in globals() and pid in hw_instan.ppn:
-            buffer_ipc = hw_instan.ppn[pid][2]
-            if len(buffer_ipc) >= 2:  # Tem [remetente, mensagem]
-                remetente = buffer_ipc[0]
-                mensagem = buffer_ipc[1]
-                hw_instan.ppn[pid][2] = []
-                return (remetente, mensagem)
-        return None
-    except Exception as e:
-        if debug: print(f"Erro ao ler IPC do PID {pid}: {e}")
-        return None
+	global hw_instan
+	if len(hw_instan[pid][2]) == 2:
+		lista_do_assinado = hw_instan.ppn[pid][2][0]
+		msg = hw_instan.ppn[pid][2][1]
+		return (True, lista_do_assinado, msg)
+	else:
+		return (False, None, None)
+
 boot_anim()
 idle = True
 idled = False
-def pwroff_krnl():
+def pwroff_krnl(exit=True):
 	global hw_instan
 	global idle
+	global UFS
 	print("desligando...")
 	time.sleep(0.4)
 	print("encerrando processos...")
@@ -302,17 +315,55 @@ def pwroff_krnl():
 	print("✅ limpado")
 	time.sleep(0.2)
 	
+	print("bloqueando a memoria...")
 	for i in range(500):
 		hw_instan.mem_prot[i] = True
-		
+	print("✅ memoria bloqueada")
+	if UFS:
+		print("desmontando filesystems...")
+		mounts = os.listdir("../mnt")
+		for i, nomefs in enumerate(mounts):
+			umnt(nomefs)
+		print("✅ filesystems desmontados")
+			
 	print("finalizando...")
 	idle = False
-	quit()
+	if exit: quit()
 
-
+def reboot():
+	global distro_cfg, tmp_m, UFS, hw_instan, phc_service
+	pwroff_krnl(exit=False)
+	tmp_m = []
+	distro_cfg = False
+	UFS = None
+	del hw_instan
+	for i in range(500):
+		hw_instan.mem_prot[i] = False
+	tmp_m.append((phc_service, "PHC Kernel Service"))
+	if os.path.exists('code/init.py'):
+		try:
+			with open("code/init.py", "r") as f:
+				tmp_m.append((f.read(), "init"))
+		except Exception:
+			pass
+			quit()
+	else:
+		codigos = os.listdir("code")
+		for i, nomes in enumerate(codigos):
+			with open(nome, "r") as f:
+				try:
+					tmp_m.append((f.read(), f"sys service {i}"))
+				except Exception:
+					pass
+					print("erro, continuar mesmo assim?")
+					a = input('(S/n): ')
+					if a == "n" or a == "N":
+						quit()
+	globals()['hw_instan'] = hardware(tmp_m)
+	
 
 print(f"status_idle: {str(idle)}")
-def initapp(app, reset_m, log):
+def initapp(app, reset_m, log, son=False, pidpai=None):
 	global tmp_m, hw_instan
 	
 	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
@@ -332,7 +383,7 @@ def initapp(app, reset_m, log):
 		
 		if reset_m:
 			# Reset mas mantém a instância do hardware
-			tmp_m = [[codigo, app]]
+			tmp_m = [(codigo, app)]
 			hw_instan.memory = tmp_m
 			hw_instan.num = 0
 			hw_instan.ppn = {}
@@ -346,10 +397,10 @@ def initapp(app, reset_m, log):
 			
 			# Garantir que tmp_m tenha espaço suficiente
 			while len(tmp_m) <= memory_index:
-				tmp_m.append([None, None])  # Preencher com placeholders
+				tmp_m.append((None, None))  # Preencher com placeholders
 			
 			# Colocar o app no slot livre
-			tmp_m[memory_index] = [codigo, app]
+			tmp_m[memory_index] = (codigo, app)
 			hw_instan.memory = tmp_m
 			
 			# 🆕 Forçar a CPU a processar a partir deste slot
@@ -357,12 +408,74 @@ def initapp(app, reset_m, log):
 				hw_instan.num = memory_index - 1
 			
 			b = random.randint(1000, 9999)
-			hw_instan.ppn[b] = [b, app, [], memory_index]
+			hw_instan.ppn[b] = [b, app, [], memory_index, False, None]
 			
 			if log: print(f"📱 App {app} carregado no slot {memory_index} (PID {b}) - aguardando execução pela CPU")
 	
 	os.chdir("..")
-			
+
+def initson(codigo, nome, pidpai):
+	global tmp_m, hw_instan
+	
+	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
+	slot_disponivel = None
+	for i in range(len(hw_instan.mem_prot)):
+		if not hw_instan.mem_prot[i]:  # Slot livre
+			slot_disponivel = i
+			break
+	
+	# ✅ CORREÇÃO CRÍTICA: Verificar se encontrou slot
+	if slot_disponivel is None:
+		if debug: print("❌ Memória cheia - não é possível criar processo filho")
+		return False
+	
+	memory_index = slot_disponivel
+		
+	# Garantir que tmp_m tenha espaço suficiente
+	while len(tmp_m) <= memory_index:
+		tmp_m.append((None, None))  # Preencher com placeholders
+		
+	# Colocar o app no slot livre
+	tmp_m[memory_index] = (codigo, nome)
+	hw_instan.memory = tmp_m
+		
+	# 🆕 Forçar a CPU a processar a partir deste slot
+	if memory_index <= hw_instan.num:
+		hw_instan.num = memory_index - 1
+	
+	if debug: print(f"✅ Código filho '{nome}' colocado no slot {memory_index} - aguardando CPU")
+	
+	# ✅ CORREÇÃO: Esperar CPU processar e depois atualizar relação pai-filho
+	time.sleep(1)  # Dar tempo para CPU processar
+	
+	# 🆕 ENCONTRAR o PID real que a CPU atribuiu ao FILHO
+	pid_filho_real = None
+	for pid, info in hw_instan.ppn.items():
+		if len(info) > 3 and info[3] == memory_index:  # Encontrou pelo memory_index
+			pid_filho_real = pid
+			break
+	
+	# 🆕 ENCONTRAR o PID real que a CPU atribuiu ao PAI
+	pid_pai_real = None
+	for pid, info in hw_instan.ppn.items():
+		if info[1] == "teste2":  # ✅ Encontrar pelo nome do pai
+			pid_pai_real = pid
+			break
+	
+	if pid_filho_real and pid_pai_real:
+		# ✅ ATUALIZAR relação pai-filho com PIDs REAIS
+		hw_instan.ppn[pid_filho_real][4] = True       # is_son = True
+		hw_instan.ppn[pid_filho_real][5] = pid_pai_real  # pidpai = PID REAL
+		
+		if debug: print(f"✅ Processo filho '{nome}' criado (PID {pid_filho_real}) para pai REAL {pid_pai_real}")
+		return True
+	else:
+		if debug: print(f"❌ Não encontrou PIDs reais: filho={pid_filho_real}, pai={pid_pai_real}")
+		return False
+
+def criar_processo_filho(pai, nome, codigo):
+	initson(codigo, nome, pai)
+	
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
     """
     Configura e conecta filesystems montados a diversos destinos
@@ -588,51 +701,87 @@ def _codigo_eh_seguro(codigo, mount_point):
 # Mantenha as funções matar_proc e listar_proc como estão, mas adicione:
 
 def matar_proc(pid, log):
-    try:
-        if 'hw_instan' in globals():
-            # 1. Marcar processo para parar
-            hw_instan.processos_parar[pid] = True
-            hw_instan.old_sloot_f.append(pid)
-            
-            # 2. CORREÇÃO: Processos com PID >= 500 não usam slots de memória
-            memory_index = None
-            if pid in hw_instan.ppn:
-                # Se for processo do sistema (PID baixo) - usa slot
-                if pid <= 499:  
-                    memory_index = pid
-                else:
-                    # Se for app (PID alto) - NÃO usa slot, é temporário
-                    if log: print(f"📱 App {pid} é temporário - sem slot de memória")
-                    memory_index = None
-            
-            # 3. CORREÇÃO: Só mexer na memória se for processo do sistema
-            if memory_index is not None and memory_index < 500:
-                # Verifica se há outros processos no mesmo memory_index
-                outros_processos = False
-                for other_pid, other_info in hw_instan.ppn.items():
-                    if other_pid != pid and other_pid < 500 and other_pid == memory_index:
-                        outros_processos = True
-                        break
-                
-                # Só libera se for o ÚNICO processo do sistema no slot
-                if not outros_processos:
-                    hw_instan.mem_prot[memory_index] = False
-                    if log: print(f"🧹 Slot {memory_index} liberado")
-                else:
-                    if log: print(f"🔒 Slot {memory_index} mantido - outros processos usando")
-            
-            # 4. Dar tempo para parar e remover
-            time.sleep(0.1)
-            
-            if pid in hw_instan.ppn:
-                nome_processo = hw_instan.ppn[pid][1]
-                del hw_instan.ppn[pid]
-                if log: print(f"Processo {pid} ({nome_processo}) terminado")
-                
-            hw_instan.old_sloot_f.append(pid)
-            
-    except Exception as e:
-        if log: print(f"Erro ao matar processo {pid}: {e}")
+	try:
+		if 'hw_instan' in globals():
+			# ✅ CORREÇÃO: Guardar relação pai-filho ANTES de modificar ppn
+			pai_original = None
+			if pid in hw_instan.ppn:
+				# Se este processo é filho, guardar quem é o pai
+				info = hw_instan.ppn[pid]
+				if len(info) > 5 and info[4]:  # É filho
+					pai_original = info[5]  # Guardar PID do pai
+			
+			if debug: 
+				print(f"🔍 matar_proc: PID={pid}, Pai_original={pai_original}")
+				print(f"🔍 PPN atual: {list(hw_instan.ppn.keys())}")
+
+			# 1. Marcar processo para parar
+			hw_instan.processos_parar[pid] = True
+			hw_instan.old_sloot_f.append(pid)
+			
+			# 2. ✅ CORREÇÃO: Matar processos filhos - usar PID REAL do processo atual
+			filhos_para_matar = []
+			for fp, info in list(hw_instan.ppn.items()):
+				if len(info) > 5 and info[4] and info[5] == pid:  # Filho deste processo
+					filhos_para_matar.append(fp)
+			
+			# Matar todos os filhos identificados
+			for filho_pid in filhos_para_matar:
+				if filho_pid in hw_instan.ppn:
+					if log: print(f"🎯 Matando filho {filho_pid} do pai {pid}")
+					matar_proc(filho_pid, log)
+			
+			# 3. Se este processo era filho, matar irmãos (filhos do mesmo pai)
+			if pai_original:
+				irmaos_para_matar = []
+				for fp, info in list(hw_instan.ppn.items()):
+					if len(info) > 5 and info[4] and info[5] == pai_original and fp != pid:
+						irmaos_para_matar.append(fp)
+				
+				for irmao_pid in irmaos_para_matar:
+					if irmao_pid in hw_instan.ppn:
+						if log: print(f"🎯 Matando irmão {irmao_pid} (mesmo pai {pai_original})")
+						matar_proc(irmao_pid, log)
+			
+			# 4. CORREÇÃO: Processos com PID >= 500 não usam slots de memória
+			memory_index = None
+			if pid in hw_instan.ppn:
+				# Se for processo do sistema (PID baixo) - usa slot
+				if pid <= 499:  
+					memory_index = pid
+				else:
+					# Se for app (PID alto) - NÃO usa slot, é temporário
+					if debug: print(f"📱 App {pid} é temporário - sem slot de memória")
+					memory_index = None
+			
+			# 5. CORREÇÃO: Só mexer na memória se for processo do sistema
+			if memory_index is not None and memory_index < 500:
+				# Verifica se há outros processos no mesmo memory_index
+				outros_processos = False
+				for other_pid, other_info in hw_instan.ppn.items():
+					if other_pid != pid and other_pid < 500 and other_pid == memory_index:
+						outros_processos = True
+						break
+				
+				# Só libera se for o ÚNICO processo do sistema no slot
+				if not outros_processos:
+					hw_instan.mem_prot[memory_index] = False
+					if log: print(f"🧹 Slot {memory_index} liberado")
+				else:
+					if log: print(f"🔒 Slot {memory_index} mantido - outros processos usando")
+			
+			# 6. Dar tempo para parar e remover
+			time.sleep(0.1)
+			
+			if pid in hw_instan.ppn:
+				nome_processo = hw_instan.ppn[pid][1]
+				del hw_instan.ppn[pid]
+				if log: print(f"Processo {pid} ({nome_processo}) terminado")
+				
+			hw_instan.old_sloot_f.append(pid)
+			
+	except Exception as e:
+		if log: print(f"Erro ao matar processo {pid}: {e}")
 
 def listar_proc(printp):
     procs = []
@@ -839,16 +988,16 @@ if {pid} in hw_instan.processos_parar:
 						return thread_func
 					
 					self.thread_code[self.procn] = self.memory[i][0]
-					self.ppn[self.procn] = [self.procn, self.memory[i][1], [], i]  # 🆕 Adiciona memory_index
+					self.ppn[self.procn] = [self.procn, self.memory[i][1], [], i, False, None]  # 🆕 Adiciona memory_index
 					thread = th.Thread(target=create_thread(self.procn))
 					thread.start()
 					self.procn +=1
 					self.threads.append(thread)
 					
 					# 🆕 CORREÇÃO CRÍTICA: Só definir mem_prot como True DEPOIS que a thread foi criada com sucesso
-					print(f"🎯 ATUALIZANDO mem_prot[{i}] = True (antes: {self.mem_prot[i]})")
+					if debug: print(f"🎯 ATUALIZANDO mem_prot[{i}] = True (antes: {self.mem_prot[i]})")
 					self.mem_prot[i] = True
-					print(f"✅ mem_prot[{i}] = {self.mem_prot[i]} (depois) - Processo PID {self.procn-1} iniciado")
+					if debug: print(f"✅ mem_prot[{i}] = {self.mem_prot[i]} (depois) - Processo PID {self.procn-1} iniciado")
 					
 					if self.old_sloot_f and i in self.old_sloot_f:
 						self.old_sloot_f.remove(i)
@@ -891,7 +1040,7 @@ if __name__ == "__main__":
 			quit()
 	
 	tmp_m = []
-	tmp_m.append([phc_service, "PHC Kernel Service"])
+	tmp_m.append((phc_service, "PHC Kernel Service"))
 	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
@@ -903,8 +1052,6 @@ if __name__ == "__main__":
 	root_ = os.listdir()
 	system_code_ = os.listdir("./system/code")
 	if debug: print(f"📁 {len(system_code_)} codigos do sistema foram encontrados")
-	if "./" not in sys.path:
-		sys.path.insert(0, "./")
 	if "./system/modules" not in sys.path:
 		sys.path.insert(0, "./system/modules")
 	erro_no_tmp_m = 0
@@ -915,7 +1062,7 @@ if __name__ == "__main__":
 		with open("system/code/init.py", "r") as initfile:
 			try:
 				try:
-					tmp_m.append([initfile.read(), "init"])
+					tmp_m.append((initfile.read(), "init"))
 					hw_instan = hardware(tmp_m)
 					if debug: print(" ✅️ init.py inicializado na memoria")
 				except Exception as e:
@@ -934,7 +1081,7 @@ if __name__ == "__main__":
 			if debug: print(f"📖lendo arquivo {arquivos}({i})")
 			with open(arquivos, "r") as code:
 				try:
-					tmp_m.append([code.read(), f"sys service {i}"])
+					tmp_m.append((code.read(), f"sys service {i}"))
 					if debug: print(f" ✅️ {arquivos} adicionado ao tmp_m com sucesso(numero execucao {i})")
 				except Exception as e:
 					if debug: print(f" ⚠️ falha ao adicionar {arquivos}({i}) ao tmp_m: {e}")
