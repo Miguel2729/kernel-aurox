@@ -1,7 +1,7 @@
 '''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
-	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, criar_processo_filho. sem importar o kernel
+	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, criar_processo_filho, pwroff_krnl, reboot. sem importar o kernel
 	3. o aurox espera essa estrutura:
 		1. kernel.py - aurox
 		2. system/ - arquivos da distro
@@ -24,6 +24,22 @@ informacoes:
 	9. initapp inicializa apps e nao servicos, nao use initapp para inicializar servicos e nao coloque apps em system/code/, coloque em system/apps
 	10. as distros não sao apenas a classe
 	11. os processos sao executados globalmente dentro do kernel e não como modulos separados, assim, processos não precisam importar kernel e podem interagir com o kernel
+	12. funções públicas:
+		1. initapp
+		2. matar_proc
+		3. listar_proc
+		4. VED
+		5. classe distro
+		6. variável debug
+		7. IPC
+		8. ler_IPC
+		9. limpar_IPC
+		10. pwroff_krnl
+		11. reboot
+		12. criar_processo_filho
+		13. mnt
+		14. umnt
+		15. configurar_fs
 '''
 
 import threading as th
