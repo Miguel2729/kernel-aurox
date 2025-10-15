@@ -91,11 +91,26 @@ matar_proc(pid, log)
 listar_proc(printp)
 # Lista todos os processos ativos
 # Retorna: [[pid, nome], ...]
+
+criar_processo_filho(pai, nome, codigo)
+# cria um processo filho, o Parâmetro pai deve ser um pid numérico, de preferência de tipo int para o encerramento do pai encerrar o filho corretamente
 ```
 
 ```python
 pwroff_krnl()
 # Desliga o sistema e encerra todos os processos
+
+reboot()
+# reinicia o sistema
+```
+### apps
+```python
+initapp(app, reset_m, log)
+# log deve ser True ou False
+# reset_m também
+# se reset_m for True o initapp vai resetar a memória para iniciar o aplicativo
+# diretorio recomendado de apps:
+# system/apps
 ```
 
 ---
@@ -153,7 +168,6 @@ ok, nome = VED(1, None, "pid")
 # Obter PID a partir do nome
 ok, pid = VED(None, "init", "name")
 ```
-
 ---
 
 ## ⚠️ Avisos Importantes
