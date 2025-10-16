@@ -24,21 +24,8 @@ informacoes:
 	9. initapp inicializa apps e nao servicos, nao use initapp para inicializar servicos e nao coloque apps em system/code/, coloque em system/apps
 	10. as distros não sao apenas a classe
 	11. os processos sao executados globalmente dentro do kernel e não como modulos separados, assim, processos não precisam importar kernel e podem interagir com o kernel
-	12 funções globais:
-		1. mnt
-		2. umnt
-		3. configurar_fs
-		4. initapp
-		5. matar_proc
-		6. listar_proc
-		7. criar_processo_filho
-		8. IPC
-		9. ler_IPC
-		10. limpar_IPC
-		12. VED
-		13. pwroff_krnl
-		14. reboot
 '''
+
 import threading as th
 import os
 import shutil
@@ -53,6 +40,7 @@ def boot_anim():
 		time.sleep(0.3)
 		if i == 4:
 			os.system("clear")
+
 
 
 # (verification of existing process)
@@ -122,7 +110,7 @@ class distro:
 					if debug: print(f"📥 lendo {nomes}...")
 					if nomes != "init.py":
 						try:
-							tmp_m.append((code.read(), nomes.replace(".py", "")+" service"))
+							tmp_m.append((code.read(), nomes.replace(".py", "")+" service", SYSC))
 						except Exception as e:
 							if debug: print(f"⛔️ falha ao adicionar serviço '{nome}': {e}")
 							service_errors += 1
@@ -396,7 +384,7 @@ def initapp(app, reset_m, log, son=False, pidpai=None):
 		
 		if reset_m:
 			# Reset mas mantém a instância do hardware
-			tmp_m = [(codigo, app)]
+			tmp_m = [(codigo, app, APPC)]
 			hw_instan.memory = tmp_m
 			hw_instan.num = 0
 			hw_instan.ppn = {}
@@ -410,10 +398,10 @@ def initapp(app, reset_m, log, son=False, pidpai=None):
 			
 			# Garantir que tmp_m tenha espaço suficiente
 			while len(tmp_m) <= memory_index:
-				tmp_m.append((None, None))  # Preencher com placeholders
+				tmp_m.append((None, None, None))  # Preencher com placeholders
 			
 			# Colocar o app no slot livre
-			tmp_m[memory_index] = (codigo, app)
+			tmp_m[memory_index] = (codigo, app, APPC)
 			hw_instan.memory = tmp_m
 			
 			# 🆕 Forçar a CPU a processar a partir deste slot
@@ -427,7 +415,7 @@ def initapp(app, reset_m, log, son=False, pidpai=None):
 	
 	os.chdir("..")
 
-def initson(codigo, nome, pidpai):
+def initson_sys(codigo, nome, pidpai):
 	global tmp_m, hw_instan
 	
 	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
@@ -446,10 +434,69 @@ def initson(codigo, nome, pidpai):
 		
 	# Garantir que tmp_m tenha espaço suficiente
 	while len(tmp_m) <= memory_index:
-		tmp_m.append((None, None))  # Preencher com placeholders
+		tmp_m.append((None, None, None))  # Preencher com placeholders
 		
 	# Colocar o app no slot livre
-	tmp_m[memory_index] = (codigo, nome)
+	tmp_m[memory_index] = (codigo, nome, SYSC)
+	hw_instan.memory = tmp_m
+		
+	# 🆕 Forçar a CPU a processar a partir deste slot
+	if memory_index <= hw_instan.num:
+		hw_instan.num = memory_index - 1
+	
+	if debug: print(f"✅ Código filho '{nome}' colocado no slot {memory_index} - aguardando CPU")
+	
+	# ✅ CORREÇÃO: Esperar CPU processar e depois atualizar relação pai-filho
+	time.sleep(1)  # Dar tempo para CPU processar
+	
+	# 🆕 ENCONTRAR o PID real que a CPU atribuiu ao FILHO
+	pid_filho_real = None
+	for pid, info in hw_instan.ppn.items():
+		if len(info) > 3 and info[3] == memory_index:  # Encontrou pelo memory_index
+			pid_filho_real = pid
+			break
+	
+	# 🆕 ENCONTRAR o PID real que a CPU atribuiu ao PAI
+	pid_pai_real = None
+	for pid, info in hw_instan.ppn.items():
+		if info[1] == "teste2":  # ✅ Encontrar pelo nome do pai
+			pid_pai_real = pid
+			break
+	
+	if pid_filho_real and pid_pai_real:
+		# ✅ ATUALIZAR relação pai-filho com PIDs REAIS
+		hw_instan.ppn[pid_filho_real][4] = True       # is_son = True
+		hw_instan.ppn[pid_filho_real][5] = pid_pai_real  # pidpai = PID REAL
+		
+		if debug: print(f"✅ Processo filho '{nome}' criado (PID {pid_filho_real}) para pai REAL {pid_pai_real}")
+		return True
+	else:
+		if debug: print(f"❌ Não encontrou PIDs reais: filho={pid_filho_real}, pai={pid_pai_real}")
+		return False
+		
+def initson(codigo, nome, pidpai):
+	global tmp_m, hw_instan
+	
+	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
+	slot_disponivel = None
+	for i in r11ange(len(hw_instan.mem_prot)):
+		if not hw_instan.mem_prot[i]:  # Slot livre
+			slot_disponivel = i
+			break
+	
+	# ✅ CORREÇÃO CRÍTICA: Verificar se encontrou slot
+	if slot_disponivel is None:
+		if debug: print("❌ Memória cheia - não é possível criar processo filho")
+		return False
+	
+	memory_index = slot_disponivel
+		
+	# Garantir que tmp_m tenha espaço suficiente
+	while len(tmp_m) <= memory_index:
+		tmp_m.append((None, None, None))  # Preencher com placeholders
+		
+	# Colocar o app no slot livre
+	tmp_m[memory_index] = (codigo, nome, APPC)
 	hw_instan.memory = tmp_m
 		
 	# 🆕 Forçar a CPU a processar a partir deste slot
@@ -488,6 +535,9 @@ def initson(codigo, nome, pidpai):
 
 def criar_processo_filho(pai, nome, codigo):
 	initson(codigo, nome, pai)
+
+def CPFS(pai, nome, codigo):
+	initson_sys(codigo, nome, pai)
 	
 
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
@@ -956,6 +1006,40 @@ def umnt(nomefs):
 
  
 
+APPC = {
+"__name__": __name__,
+"VED": VED,
+"matar_proc": matar_proc,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"criar_processo_filho": criar_processo_filho,
+"__builtins__":  __builtins__
+}
+
+SYSC = {
+'__name__': __name__,
+"__builtins__": __builtins__,
+"mnt": mnt,
+"umnt": umnt,
+"configurar_fs": configurar_fs,
+"matar_proc": matar_proc,
+"APPC": APPC,
+"distro": distro,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"pwroff_krnl": pwroff_krnl,
+"debug": debug,
+"criar_processo_filho": criar_processo_filho,
+"CPFS": CPFS,
+"initapp": initapp,
+'PHC': PHC,
+"reboot": reboot
+}
+
 class hardware:
 	def __init__(self, m):
 		self.memory = m
@@ -968,6 +1052,7 @@ class hardware:
 		self.mem_prot = [False] * 500
 		self.old_sloot_f = []
 		self.verificacoes = 0
+		self.containers = {}
 		
 		cput = th.Thread(target=self.cpu)
 		cput.start()
@@ -1036,7 +1121,7 @@ if {pid} in hw_instan.processos_parar:
 """
 							try:
 								globals()["hw_instan"] = hw_instan
-								exec(codigo_wrap, globals())
+								exec(codigo_wrap, globals(), self.memory[i][2])
 							except Exception as e:
 								print(f"Erro no processo {pid}: {e}")
 						return thread_func
@@ -1094,7 +1179,7 @@ if __name__ == "__main__":
 			quit()
 	
 	tmp_m = []
-	tmp_m.append((phc_service, "PHC Kernel Service"))
+	tmp_m.append((phc_service, "PHC Kernel Service", SYSC))
 	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
@@ -1116,7 +1201,7 @@ if __name__ == "__main__":
 		with open("system/code/init.py", "r") as initfile:
 			try:
 				try:
-					tmp_m.append((initfile.read(), "init"))
+					tmp_m.append((initfile.read(), "init", SYSC))
 					hw_instan = hardware(tmp_m)
 					if debug: print(" ✅️ init.py inicializado na memoria")
 				except Exception as e:
@@ -1135,7 +1220,7 @@ if __name__ == "__main__":
 			if debug: print(f"📖lendo arquivo {arquivos}({i})")
 			with open(arquivos, "r") as code:
 				try:
-					tmp_m.append((code.read(), f"sys service {i}"))
+					tmp_m.append((code.read(), f"sys service {i}", SYSC))
 					if debug: print(f" ✅️ {arquivos} adicionado ao tmp_m com sucesso(numero execucao {i})")
 				except Exception as e:
 					if debug: print(f" ⚠️ falha ao adicionar {arquivos}({i}) ao tmp_m: {e}")
