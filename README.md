@@ -216,6 +216,7 @@ SYSC = {
 # ⚠️ Avisos Importantes
 
 - ⚙️ pode ser usado em contextos educacionais, Simulações e produtivos
+- 💾 cuidado com configurar_fs, ele não é simulado
 - 🧪 Teste extensivamente os serviços antes de distribuir.  
 - 🔁 while True em processos são modificados pelo kernel para parar em caso de encerrar o processo
 - 🧹 Use `matar_proc()` e `pwroff_krnl()` para encerrar processos corretamente.  
