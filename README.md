@@ -127,10 +127,10 @@ configurar_fs(nomefs, tipo, destino, parametros)
 # Configura um filesystem montado
 # Tipos: 'hardware', 'diretorio', 'codigo_paralelo', 'rede'
 # Parâmetros por tipo:
-#   'hardware': baud_rate, vendor_id, product_id, sample_rate
-#   'diretorio': sync_mode, criar_diretorio
+#   'hardware': sem parâmetros
+#   'diretorio': sync_mode, criar_diretorio, intervalo
 #   'codigo_paralelo': intervalo
-#   'rede': protocolo, porta, timeout
+#   'rede': protocolo, porta
 # para obter mais informações pode olhar o código de kernel.py, não tem problema, é licença MIT
 ```
 
