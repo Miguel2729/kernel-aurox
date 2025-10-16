@@ -222,7 +222,7 @@ SYSC = {
 - 🧹 Use `matar_proc()` e `pwroff_krnl()` para encerrar processos corretamente.  
 - 🔐 Verifique permissões do arquivo `shell`.
 - ✅️ os processos são executados dentro do kernel em contexto global, não como módulos separados, pode se comunicar(usar funções do kernel) com o kernel sem importar
-
+- 📦 todos os processos tem um container criado pelo kernel, não é preciso se preocupar com o nome das variávei
 ---
 
 ## 🚀 Começando
