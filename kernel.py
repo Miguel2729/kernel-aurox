@@ -24,8 +24,21 @@ informacoes:
 	9. initapp inicializa apps e nao servicos, nao use initapp para inicializar servicos e nao coloque apps em system/code/, coloque em system/apps
 	10. as distros não sao apenas a classe
 	11. os processos sao executados globalmente dentro do kernel e não como modulos separados, assim, processos não precisam importar kernel e podem interagir com o kernel
+	12 funções globais:
+		1. mnt
+		2. umnt
+		3. configurar_fs
+		4. initapp
+		5. matar_proc
+		6. listar_proc
+		7. criar_processo_filho
+		8. IPC
+		9. ler_IPC
+		10. limpar_IPC
+		12. VED
+		13. pwroff_krnl
+		14. reboot
 '''
-
 import threading as th
 import os
 import shutil
@@ -476,6 +489,7 @@ def initson(codigo, nome, pidpai):
 def criar_processo_filho(pai, nome, codigo):
 	initson(codigo, nome, pai)
 	
+
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
     """
     Conecta um filesystem montado a um destino real do sistema
@@ -514,6 +528,91 @@ def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
         print(f"Erro ao configurar {nomefs}: {e}")
         return False
 
+def _conectar_codigo_paralelo(nomefs, arquivo_python, parametros, mount_point):
+    """
+    Conecta o FS a um arquivo Python para execução paralela isolada.
+    O código executa em thread separada mas NÃO pode sair do filesystem.
+    """
+    print(f"⚡ Conectando {nomefs} ao código paralelo {arquivo_python}")
+
+    # Verificar se o arquivo existe
+    if not os.path.exists(arquivo_python):
+        print(f"⛔ Arquivo {arquivo_python} não encontrado")
+        return False
+
+    # Verificar se é um arquivo Python
+    if not arquivo_python.endswith('.py'):
+        print(f"⛔ {arquivo_python} não é um arquivo Python (.py)")
+        return False
+
+    try:
+        # Ler o código do arquivo
+        with open(arquivo_python, 'r') as f:
+            codigo = f.read()
+
+        # Configurar parâmetros
+        intervalo = parametros.get('intervalo', 1)  # Default 1 segundo
+
+        # Criar arquivo de controle no mount_point
+        controle_file = os.path.join(mount_point, 'parallel_control.py')
+        with open(controle_file, 'w') as f:
+            f.write(f"# Controle do código paralelo: {arquivo_python}\n")
+            f.write(f"intervalo = {intervalo}\n")
+            f.write(f"source_file = '{arquivo_python}'\n\n")
+
+        # Função que executa o código isolado no filesystem
+        def executar_codigo_isolado():
+            contador = 0
+            while True:
+                try:
+                    # Mudar para o diretório do mount_point (isolamento)
+                    os.chdir(mount_point)
+                    
+                    # Criar namespace isolado
+                    namespace_isolado = {
+                        '__name__': '__main__',
+                        'contador': contador,
+                        'intervalo': intervalo,
+                        'mount_point': mount_point,
+                        'time': time,
+                        'print': print  # Permitir print mas só dentro do FS
+                    }
+                    
+                    # Executar o código no namespace isolado
+                    exec(codigo, namespace_isolado)
+                    
+                    contador += 1
+                    time.sleep(intervalo)
+                    
+                    # Verificar se deve continuar (arquivo de controle existe)
+                    if not os.path.exists(os.path.join(mount_point, 'parallel_control.py')):
+                        break
+                        
+                except Exception as e:
+                    # Log do erro dentro do filesystem
+                    error_log = os.path.join(mount_point, 'error.log')
+                    with open(error_log, 'a') as f:
+                        f.write(f"[{time.time()}] Erro: {e}\n")
+                    time.sleep(intervalo)
+
+        # Iniciar thread do código paralelo
+        thread_codigo = th.Thread(target=executar_codigo_isolado, daemon=True)
+        thread_codigo.start()
+
+        # Criar arquivo de status
+        status_file = os.path.join(mount_point, 'status.info')
+        with open(status_file, 'w') as f:
+            f.write(f"codigo_paralelo: {arquivo_python}\n")
+            f.write(f"intervalo: {intervalo}s\n")
+            f.write(f"thread_ativa: True\n")
+            f.write(f"iniciado_em: {time.time()}\n")
+
+        print(f"✅ Código paralelo {arquivo_python} iniciado (intervalo: {intervalo}s)")
+        return True
+
+    except Exception as e:
+        print(f"⛔ Erro ao conectar código paralelo {arquivo_python}: {e}")
+        return False
 
 def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
     """
@@ -544,7 +643,6 @@ def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
     except Exception as e:
         print(f"⛔ Erro ao conectar {dispositivo}: {e}")
         return False
-
 
 def _conectar_diretorio(nomefs, diretorio, parametros, mount_point):
     """
@@ -593,7 +691,6 @@ def _conectar_diretorio(nomefs, diretorio, parametros, mount_point):
         print(f"⚠️ Modo desconhecido '{modo}'. Use 'readonly' ou 'mirror'.")
         return False
 
-
 def _sincronizar_diretorios(origem, destino, somente_leitura=False):
     """
     Sincroniza o conteúdo de dois diretórios.
@@ -630,7 +727,6 @@ def _sincronizar_diretorios(origem, destino, somente_leitura=False):
                     if debug:
                         print(f"Erro ao remover {item}: {e}")
 
-
 def _conectar_rede(nomefs, endpoint, parametros, mount_point):
     """
     Conecta FS a um recurso de rede real via comandos básicos de rede.
@@ -654,7 +750,6 @@ def _conectar_rede(nomefs, endpoint, parametros, mount_point):
     except Exception as e:
         print(f"⚠️ Falha ao conectar em {endpoint}:{porta} — {e}")
         return False
-
 
 
 # Mantenha as funções matar_proc e listar_proc como estão, mas adicione:
