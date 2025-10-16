@@ -45,7 +45,7 @@ A classe `distro` é usada pelas distribuições Aurox para definir nome, versã
 testsOS = distro(
 	nome="MinhaDistro", ver="1.0",
 	fs=["rootfs"], nomefs=["sistema"],
-	cfgfs=[[("diretorio", "/tmp", {"sync_mode": "mirror"})]],
+	cfgfs=[[("diretorio", "/tmp", {"sync_mode": "mirror", intervalo: 0.10})]],
 	services=["vfs.py", "audio.py", "tools.py"],
 	serv_reset_m=False,
 	ipc=True
@@ -73,7 +73,7 @@ print("🚀 Inicializando Minha Distribuição Aurox...")
 mnt("rootfs", "sistema")
 
 # Configurar conexões
-configurar_fs("sistema", "diretorio", "/tmp", {"sync_mode": "mirror"})
+configurar_fs("sistema", "diretorio", "/tmp", {"sync_mode": "mirror", intervalo: 0.10})
 
 print("✅ Sistema inicializado com sucesso!")
 ```
@@ -94,6 +94,9 @@ listar_proc(printp)
 
 criar_processo_filho(pai, nome, codigo)
 # cria um processo filho, o Parâmetro pai deve ser um pid numérico, de preferência de tipo int para o encerramento do pai encerrar o filho corretamente
+
+CPFS(pai, nome, codigo)
+# a mesma coisa criar_processo_filho, só que inicia no contexto do SYSC, apenas a distro(apps não) tem acesso ao CPFS
 ```
 
 ```python
@@ -169,8 +172,48 @@ ok, nome = VED(1, None, "pid")
 ok, pid = VED(None, "init", "name")
 ```
 ---
+---
+# namespaces do kernel
+- o kernel executa namespaces separados para apps e a distro
+namespaces:
+```python
+APPC = {
+"__name__": __name__,
+"VED": VED,
+"matar_proc": matar_proc,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"criar_processo_filho": criar_processo_filho,
+"__builtins__":  __builtins__
+}
 
-## ⚠️ Avisos Importantes
+SYSC = {
+'__name__': __name__,
+"__builtins__": __builtins__,
+"mnt": mnt,
+"umnt": umnt,
+"configurar_fs": configurar_fs,
+"matar_proc": matar_proc,
+"APPC": APPC,
+"distro": distro,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"pwroff_krnl": pwroff_krnl,
+"debug": debug,
+"criar_processo_filho": criar_processo_filho,
+"CPFS": CPFS,
+"initapp": initapp,
+'PHC': PHC,
+"reboot": reboot
+}
+```
+---
+
+# ⚠️ Avisos Importantes
 
 - ⚙️ pode ser usado em contextos educacionais, Simulações e produtivos
 - 🧪 Teste extensivamente os serviços antes de distribuir.  
