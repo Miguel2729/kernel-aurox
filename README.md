@@ -45,7 +45,7 @@ A classe `distro` é usada pelas distribuições Aurox para definir nome, versã
 testsOS = distro(
 	nome="MinhaDistro", ver="1.0",
 	fs=["rootfs"], nomefs=["sistema"],
-	cfgfs=[[("diretorio", "/tmp", {"sync_mode": "mirror", intervalo: 0.10})]],
+	cfgfs=[[("diretorio", "/tmp", {"sync_mode": "mirror", "intervalo": 0.10})]],
 	services=["vfs.py", "audio.py", "tools.py"],
 	serv_reset_m=False,
 	ipc=True
