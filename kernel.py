@@ -479,7 +479,7 @@ def initson(codigo, nome, pidpai):
 	
 	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
 	slot_disponivel = None
-	for i in r11ange(len(hw_instan.mem_prot)):
+	for i in range(len(hw_instan.mem_prot)):
 		if not hw_instan.mem_prot[i]:  # Slot livre
 			slot_disponivel = i
 			break
