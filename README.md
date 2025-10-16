@@ -134,6 +134,8 @@ configurar_fs(nomefs, tipo, destino, parametros)
 #   'diretorio': sync_mode, criar_diretorio, intervalo
 #   'codigo_paralelo': intervalo
 #   'rede': protocolo, porta
+#   'servidorweb': www_dir, protocolo, porta
+#   'servidor': protocolo, porta, servidor_arquivos, servidor_servicos
 # para obter mais informações pode olhar o código de kernel.py, não tem problema, é licença MIT
 ```
 
