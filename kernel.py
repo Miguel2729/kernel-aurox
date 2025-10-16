@@ -1040,6 +1040,8 @@ SYSC = {
 "reboot": reboot
 }
 
+containers = {}
+
 class hardware:
 	def __init__(self, m):
 		self.memory = m
@@ -1059,6 +1061,7 @@ class hardware:
 		if debug: print("✅ Thread cpu iniciada")
 	
 	def cpu(self):
+		global containers
 		if debug: print("🔧 Método cpu() executando")
 		
 		debug_ativo = True  # Controla debug apenas durante inicialização
@@ -1068,6 +1071,7 @@ class hardware:
 			if debug and debug_ativo and self.verificacoes % 10 == 0:
 				print(f"📝 Memória tem {len(self.memory)} aplicações:")
 				for i, app in enumerate(self.memory):
+					containers[i] = {}
 					status = "✅" if i < len(self.mem_prot) and self.mem_prot[i] else "⏳"
 					print(f"  {status} codigo {i}: {app[0][:40]}...")
 			
@@ -1121,7 +1125,7 @@ if {pid} in hw_instan.processos_parar:
 """
 							try:
 								globals()["hw_instan"] = hw_instan
-								exec(codigo_wrap, globals(), self.memory[i][2])
+								exec(codigo_wrap, {**globals(), **self.memory[i][2], **containers[i]})
 							except Exception as e:
 								print(f"Erro no processo {pid}: {e}")
 						return thread_func
