@@ -39,6 +39,8 @@ import shutil
 import sys
 import time
 import random
+from dataclasses import dataclass
+from typing import Optional, List, Dict
 def boot_anim():
 	for i in range(5):
 		os.system("clear")
@@ -48,6 +50,31 @@ def boot_anim():
 		if i == 4:
 			os.system("clear")
 
+class domestico:
+	@dataclass
+	class email:
+		destinario: str
+		assunto: str
+		mensagem: str
+		remetente: Optional[str] = None
+		cc: Optional[List[str]] = None
+		anexos: Optional[List[str]] = None
+	
+	@dataclass
+	class messages:
+		remetente_tel: str
+		msg: str
+		destino_tel: str
+		views: Optional[List[str]] = None
+		ddd: Optional[int] = None
+	
+	@dataclass
+	class app:
+		code: str
+		uid: Optional[int] = None
+		name: Optional[str] = "app generico"
+		perms: Optional[Dict[str, bool]] = None
+		appdata: Optional[Dict[str, str]] = None
 
 def VSP():
 	global hw_instan
@@ -1019,7 +1046,8 @@ APPC = {
 "shutil": shutil,
 "import2": __import__,
 "random": random,
-'sys_pid': sys_pid
+'sys_pid': sys_pid,
+"domestico": domestico
 }
 
 SYSC = {
@@ -1052,7 +1080,8 @@ SYSC = {
 "shutil": shutil,
 "random": random,
 "import2": __import__,
-"sys_pid": sys_pid
+"sys_pid": sys_pid,
+"domestico": domestico
 }
 
 KRNLC = {
