@@ -66,9 +66,9 @@ testsOS = distro(
 - Serviços e daemons em background    
 - Drivers simulados(ou não) com `configurar_fs()`
 
-### desenvolvimento pacotes aurox
+### 🗂 desenvolvimento pacotes aurox
 ---
-deve ser hm repositório do github
+deve ser um repositório do github
 estrutura do repositório:
 ```tree
 [pacote]-aurox-pkg
