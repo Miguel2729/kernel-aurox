@@ -623,7 +623,6 @@ def criar_processo_filho(pai, nome, codigo):
 def CPFS(pai, nome, codigo):
 	initson_sys(codigo, nome, pai)
 	
-
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
 	"""
 	Conecta um filesystem montado a um destino real do sistema
@@ -666,6 +665,143 @@ def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
 		print(f"Erro ao configurar {nomefs}: {e}")
 		return False
 
+def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
+	"""
+	Conecta filesystem a hardware real (USB, disco, etc.)
+	"""
+	print(f"🔌 Conectando '{nomefs}' ao hardware '{dispositivo}'")
+	
+	try:
+		info_file = os.path.join(mount_point, 'hardware.info')
+		with open(info_file, 'w') as f:
+			f.write(f"hardware: {dispositivo}\n")
+			f.write(f"tipo: dispositivo_fisico\n")
+			f.write(f"parametros: {parametros}\n")
+			f.write(f"status: conectado\n")
+		
+		print(f"✅ Hardware '{dispositivo}' conectado a '{nomefs}'")
+		return True
+		
+	except Exception as e:
+		print(f"⛔ Erro ao conectar hardware {dispositivo}: {e}")
+		return False
+
+def _conectar_diretorio(nomefs, caminho, parametros, mount_point):
+	"""
+	Conecta filesystem a um diretório real do sistema
+	"""
+	print(f"📁 Conectando '{nomefs}' ao diretório '{caminho}'")
+	
+	try:
+		if not os.path.exists(caminho):
+			os.makedirs(caminho, exist_ok=True)
+			print(f"📁 Diretório {caminho} criado")
+		
+		info_file = os.path.join(mount_point, 'diretorio.info')
+		with open(info_file, 'w') as f:
+			f.write(f"diretorio: {caminho}\n")
+			f.write(f"tipo: link_diretorio\n")
+			f.write(f"parametros: {parametros}\n")
+			f.write(f"status: conectado\n")
+		
+		if parametros.get('copiar_conteudo'):
+			for item in os.listdir(caminho):
+				item_path = os.path.join(caminho, item)
+				if os.path.isfile(item_path):
+					shutil.copy2(item_path, mount_point)
+		
+		print(f"✅ Diretório '{caminho}' conectado a '{nomefs}'")
+		return True
+		
+	except Exception as e:
+		print(f"⛔ Erro ao conectar diretório {caminho}: {e}")
+		return False
+
+def _conectar_codigo_paralelo(nomefs, script_path, parametros, mount_point):
+	"""
+	Conecta filesystem a código Python paralelo
+	"""
+	print(f"🐍 Conectando '{nomefs}' ao código '{script_path}'")
+	
+	try:
+		if not os.path.exists(script_path):
+			print(f"⛔ Script {script_path} não encontrado")
+			return False
+		
+		with open(script_path, 'r') as f:
+			codigo = f.read()
+		
+		intervalo = parametros.get('intervalo', 1.0)
+		
+		servico_code = f"""
+import time
+import os
+
+def executar_servico_paralelo():
+	while True:
+		try:
+			exec('''{codigo}''')
+		except Exception as e:
+			print(f"Erro no serviço paralelo {{nomefs}}: {{e}}")
+		
+		time.sleep({intervalo})
+
+import threading
+thread = threading.Thread(target=executar_servico_paralelo, daemon=True)
+thread.start()
+"""
+		
+		exec(servico_code, globals())
+		
+		info_file = os.path.join(mount_point, 'codigo_paralelo.info')
+		with open(info_file, 'w') as f:
+			f.write(f"script: {script_path}\n")
+			f.write(f"tipo: codigo_paralelo\n")
+			f.write(f"intervalo: {intervalo}\n")
+			f.write(f"status: executando\n")
+		
+		print(f"✅ Código paralelo '{script_path}' conectado a '{nomefs}'")
+		return True
+		
+	except Exception as e:
+		print(f"⛔ Erro ao conectar código {script_path}: {e}")
+		return False
+
+def _conectar_rede(nomefs, host, parametros, mount_point):
+	"""
+	Conecta filesystem a recurso de rede
+	"""
+	print(f"🌐 Conectando '{nomefs}' à rede '{host}'")
+	
+	try:
+		porta = parametros.get('porta', 80)
+		protocolo = parametros.get('protocolo', 'tcp')
+		
+		info_file = os.path.join(mount_point, 'rede.info')
+		with open(info_file, 'w') as f:
+			f.write(f"host: {host}\n")
+			f.write(f"porta: {porta}\n")
+			f.write(f"protocolo: {protocolo}\n")
+			f.write(f"tipo: conexao_rede\n")
+			f.write(f"status: conectado\n")
+		
+		test_code = f"""
+import socket
+try:
+	socket.create_connection(('{host}', {porta}), timeout=5)
+	print(f"✅ Conexão de rede '{nomefs}' ativa: {host}:{porta}")
+except Exception as e:
+	print(f"⚠️  Aviso conexão '{nomefs}': {{e}}")
+"""
+		exec(test_code, globals())
+		
+		print(f"✅ Rede '{host}:{porta}' conectada a '{nomefs}'")
+		return True
+		
+	except Exception as e:
+		print(f"⛔ Erro ao conectar rede {host}: {e}")
+		return False
+
 def _conectar_servidorweb(nomefs, host, parametros, mount_point):
 	"""
 	Cria um servidor web real no filesystem.
@@ -677,12 +813,10 @@ def _conectar_servidorweb(nomefs, host, parametros, mount_point):
 	www_dir = parametros.get('www_dir', mount_point)
 
 	try:
-		# Verificar se o diretório existe
 		if not os.path.exists(www_dir):
 			os.makedirs(www_dir, exist_ok=True)
 			print(f"📁 Diretório {www_dir} criado")
 
-		# Código do servidor web
 		servidor_code = f"""
 import http.server
 import socketserver
@@ -708,15 +842,12 @@ def run_web_server():
 	except Exception as e:
 		print(f"❌ Erro no servidor web: {{e}}")
 
-# Executa em thread separada
 thread = threading.Thread(target=run_web_server, daemon=True)
 thread.start()
 """
 		
-		# Executa o servidor
 		exec(servidor_code, globals())
 		
-		# Cria arquivo de status
 		status_file = os.path.join(mount_point, 'server.status')
 		with open(status_file, 'w') as f:
 			f.write(f"servidor_web: {nomefs}\n")
@@ -743,14 +874,52 @@ def _conectar_servidor(nomefs, host, parametros, mount_point):
 	protocolo = parametros.get('protocolo', 'tcp')
 	servidor_arquivos = parametros.get('servidor_arquivos')
 	servidor_servicos = parametros.get('servidor_servicos', [])
+	
+	# 🎯 CARREGAR E EXECUTAR serviços DENTRO DO SERVIDOR
+	servicos_globais = {}
+	servicos_dir = os.path.join(mount_point, 'services')
+	
+	if os.path.exists(servicos_dir):
+		for arquivo in os.listdir(servicos_dir):
+			if arquivo.endswith('.py'):
+				nome_servico = arquivo[:-3]
+				caminho_script = os.path.join(servicos_dir, arquivo)
+				
+				try:
+					with open(caminho_script, 'r') as f:
+						codigo = f.read()
+					
+					# 🎯 Compilar código do serviço para passar ao servidor
+					servicos_globais[nome_servico] = codigo
+					print(f"  ✅ Serviço '{nome_servico}' carregado")
+						
+				except Exception as e:
+					print(f"  ⚠️ Erro carregando serviço '{nome_servico}': {e}")
 
 	try:
-		# Código base do servidor
+		# 🎯 Código do servidor COM SERVIÇOS EXECUTANDO DENTRO
 		servidor_base = f"""
 import socket
 import threading
 import os
 import time
+import json
+
+# 🎯 EXECUTAR serviços DENTRO do contexto do servidor
+servicos_ativos = {{}}
+
+# Inicializar cada serviço
+for nome_servico, codigo_servico in {servicos_globais}.items():
+	try:
+		# Executar código do serviço DENTRO do servidor
+		exec(codigo_servico)
+		if 'main' in locals():
+			# 🎯 INSTANCIAR serviço DENTRO do servidor
+			instancia_servico = main()
+			servicos_ativos[nome_servico] = instancia_servico
+			print(f"🎯 Serviço '{{nome_servico}' INICIADO DENTRO DO SERVIDOR")
+	except Exception as e:
+		print(f"❌ Erro iniciando serviço '{{nome_servico}}': {{e}}")
 
 class GenericServer:
 	def __init__(self, host='', port={porta}):
@@ -759,20 +928,52 @@ class GenericServer:
 		self.running = True
 		self.file_server = '{servidor_arquivos}' if '{servidor_arquivos}' else None
 		self.services = {servidor_servicos}
+		self.servicos_ativos = servicos_ativos  # 🎯 Serviços JÁ EXECUTANDO
 	
 	def handle_client(self, client_socket):
 		try:
 			request = client_socket.recv(1024).decode('utf-8')
 			print(f"📨 Cliente conectado: {{request[:50]}}...")
 			
-			# Resposta básica
-			response = "HTTP/1.1 200 OK\\r\\n\\r\\nServidor Aurox Generic Server"
-			client_socket.send(response.encode('utf-8'))
+			# 🎯 PROCESSAR com serviços ATIVOS
+			resposta = self.processar_com_servicos(request)
+			if resposta:
+				client_socket.send(resposta.encode('utf-8'))
+			else:
+				response = "HTTP/1.1 200 OK\\r\\n\\r\\nServidor Aurox Generic Server"
+				client_socket.send(response.encode('utf-8'))
 			
 		except Exception as e:
 			print(f"Erro no cliente: {{e}}")
+			response = "HTTP/1.1 500 Internal Error\\r\\n\\r\\nErro no servidor"
+			client_socket.send(response.encode('utf-8'))
 		finally:
 			client_socket.close()
+	
+	def processar_com_servicos(self, request):
+		'''Processa requisição usando serviços ativos DENTRO DO SERVIDOR'''
+		try:
+			for nome_servico, servico in self.servicos_ativos.items():
+				try:
+					# 🎯 Serviço EXECUTA DENTRO do servidor
+					if hasattr(servico, 'processar_request'):
+						resultado = servico.processar_request(request)
+						if resultado:
+							return f"HTTP/1.1 200 OK\\r\\n\\r\\n{{json.dumps(resultado)}}"
+					
+					# 🎯 Ou usar método padrão 'processar'
+					elif hasattr(servico, 'processar'):
+						resultado = servico.processar()
+						if resultado:
+							return f"HTTP/1.1 200 OK\\r\\n\\r\\n{{json.dumps(resultado)}}"
+							
+				except Exception as e:
+					print(f"Erro no serviço {{nome_servico}}: {{e}}")
+					
+		except Exception as e:
+			print(f"Erro geral em serviços: {{e}}")
+		
+		return None
 	
 	def start(self):
 		server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -781,8 +982,7 @@ class GenericServer:
 		server_socket.listen(5)
 		
 		print(f"✅ Servidor genérico '{nomefs}' rodando em {{self.host}}:{{self.port}}")
-		print(f"📁 File server: {{self.file_server}}")
-		print(f"🔧 Serviços: {{self.services}}")
+		print(f"🎯 Serviços EXECUTANDO DENTRO: {{list(self.servicos_ativos.keys())}}")
 		
 		while self.running:
 			try:
@@ -797,26 +997,22 @@ def run_generic_server():
 	server = GenericServer()
 	server.start()
 
-# Executa em thread separada
 thread = threading.Thread(target=run_generic_server, daemon=True)
-	thread.start()
+thread.start()
 """
 		
-		# Executa o servidor
 		exec(servidor_base, globals())
 		
-		# Cria arquivo de status
 		status_file = os.path.join(mount_point, 'generic_server.status')
 		with open(status_file, 'w') as f:
 			f.write(f"servidor: {nomefs}\n")
 			f.write(f"host: {host}\n")
 			f.write(f"porta: {porta}\n")
-			f.write(f"protocolo: {protocolo}\n")
-			f.write(f"servidor_arquivos: {servidor_arquivos}\n")
-			f.write(f"servidor_servicos: {servidor_servicos}\n")
-			f.write(f"status: ativo\n")
+			f.write(f"servicos_ativos: {list(servicos_globais.keys())}\n")
+			f.write(f"status: executando\n")
 
-		print(f"✅ Servidor genérico '{nomefs}' rodando em {protocolo}://{host}:{porta}")
+		print(f"✅ Servidor genérico '{nomefs}' rodando em {host}:{porta}")
+		print(f"🎯 Serviços EXECUTANDO DENTRO DO SERVIDOR: {list(servicos_globais.keys())}")
 		return True
 		
 	except Exception as e:
