@@ -31,6 +31,8 @@ informacoes:
 	11. os processos sao executados globalmente dentro do kernel e não como modulos separados, assim, processos não precisam importar kernel e podem interagir com o kernel
 '''
 
+sys_pid = []
+
 import threading as th
 import os
 import shutil
@@ -47,6 +49,15 @@ def boot_anim():
 			os.system("clear")
 
 
+def VSP():
+	global hw_instan
+	global sys_pid
+	global SYSC
+	sys_pid = []
+	for i in range(len(hw_instan.memory)):
+		if hw_instan.memory[i][2] == SYSC:
+			sys_pid.append(hw_instan.ppn[i][0])
+	sys_pid = tuple(sys_pid)
 
 # (verification of existing process)
 def VED(pid, nome, x):
@@ -1002,7 +1013,13 @@ APPC = {
 "__builtins__":  __builtins__,
 "listpkg": listpkg,
 "usepkg": usepkg,
-"checkpkg": checkpkg
+"checkpkg": checkpkg,
+"os": os,
+"time": time,
+"shutil": shutil,
+"import2": __import__,
+"random": random,
+'sys_pid': sys_pid
 }
 
 SYSC = {
@@ -1023,14 +1040,71 @@ SYSC = {
 "criar_processo_filho": criar_processo_filho,
 "CPFS": CPFS,
 "initapp": initapp,
+"reboot": reboot,
+"installpkg": installpkg,
+"delpkg": delpkg,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg,
+"os": os,
+"sys": sys,
+"time": time,
+"shutil": shutil,
+"random": random,
+"import2": __import__,
+"sys_pid": sys_pid
+}
+
+KRNLC = {
+'__name__': __name__,
+"__builtins__": __builtins__,
+"VED": VED,
+"mnt": mnt,
+"umnt": umnt,
+"configurar_fs": configurar_fs,
+"matar_proc": matar_proc,
+"distro": distro,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"pwroff_krnl": pwroff_krnl,
+"debug": debug,
+"CPFS": CPFS,
+"initapp": initapp,
 'PHC': PHC,
 "reboot": reboot,
 "installpkg": installpkg,
 "delpkg": delpkg,
 "listpkg": listpkg,
 "usepkg": usepkg,
-"checkpkg": checkpkg
+"checkpkg": checkpkg,
+"os": os,
+"sys": sys,
+"time": time,
+"shutil": shutil,
+"random": random,
+"import2": __import__,
+"sys_pid": sys_pid,
+"VSP": VSP
 }
+
+class HWIW:
+    def __init__(self, hw_instan):
+        self._hw_instan = hw_instan
+        
+    @property
+    def processos_parar(self):
+        return self._hw_instan.processos_parar
+        
+    # 🔒 BLOQUEIA acesso a outros atributos
+    def __getattr__(self, name):
+        if name == 'processos_parar':
+            return self._hw_instan.processos_parar
+        raise AttributeError(f"Acesso restrito a hw_instan.{name}")
+
+
+
 
 containers = {}
 
@@ -1046,7 +1120,6 @@ class hardware:
 		self.mem_prot = [False] * 500
 		self.old_sloot_f = []
 		self.verificacoes = 0
-		self.containers = {}
 		
 		cput = th.Thread(target=self.cpu)
 		cput.start()
@@ -1117,7 +1190,7 @@ if {pid} in hw_instan.processos_parar:
 """
 							try:
 								globals()["hw_instan"] = hw_instan
-								exec(codigo_wrap, {**globals(), **self.memory[i][2], **containers[i]})
+								exec(codigo_wrap, {"hw_instan": HWIW(hw_instan), **self.memory[i][2], **containers[i]})
 							except Exception as e:
 								print(f"Erro no processo {pid}: {e}")
 						return thread_func
@@ -1175,7 +1248,12 @@ if __name__ == "__main__":
 			quit()
 	
 	tmp_m = []
-	tmp_m.append((phc_service, "PHC Kernel Service", SYSC))
+	tmp_m.append((phc_service, "PHC Kernel Service", KRNLC))
+	x = """while True:
+	time.sleep(0.5)
+	VSP"""
+
+	tmp_m.append((x, "VSP Kernel Service", KRNLC))
 	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
