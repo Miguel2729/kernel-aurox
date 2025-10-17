@@ -1,7 +1,7 @@
 '''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
-	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, criar_processo_filho. sem importar o kernel
+	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, installpkg, delpkg, listpkg, usepkg, checkpkg, criar_processo_filho. sem importar o kernel
 	3. o aurox espera essa estrutura:
 		1. kernel.py - aurox
 		2. system/ - arquivos da distro
@@ -11,14 +11,19 @@ informacoes:
 		6. apps do sistema
 		7. system/apps - aplicativos do sistema(se tiver)
 		8. system/tmp - arquivos temporarios
+		9. mnt/
+		10. pkg/
 		9. mnt - lugar onde filesystems sao montados
-	4. quando a distro é inicializada, continua em system/ e não sai, por isso algumas funcoes se comportam como se estivessem em system/
+	4. quando a distro é inicializada, o diretorio global continua sendo system
 	5. o nome do kernel é aurox
 	6. a classe distro configura a distro:
 		1. nome dela
 		2. versao dela
 		3. filesystems para montar e configurar
 		4. servicos para inicializar
+		5. ipc
+		6. ufs(umount filesystems on shutdown)
+		7, pacotes
 	7. isso é um kernel é não um OS, ele executa a distro(distruibuição aurox) assim como o linux exexuta a distro linux(distruibuição linux)
 	8. o limite de processos é 500
 	9. initapp inicializa apps e nao servicos, nao use initapp para inicializar servicos e nao coloque apps em system/code/, coloque em system/apps
@@ -64,8 +69,10 @@ distro_cfg = False
 UFS = None
 # classe para as distros usarem
 class distro:
-	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs):
+	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs, pkgs):
 		global tmp_m, hw_instan, distro_cfg, UFS
+		for pacote in pkgs:
+			installpkg(pacote[0], pacote[1])
 		if not distro_cfg:
 			os.makedirs("./info", exist_ok=True)
 			with open("./info/nome.txt", "w") as nomed:
@@ -145,7 +152,11 @@ class distro:
 			self.ipccfg = ipc
 		distro_cfg = True
 		UFS = ufs
+
 	
+
+
+
 	def return_debug(self):
 		return [hw_instan.ppn, tmp_m, hw_instan.num, hw_instan.mem_prot, self.servic, self.ipccfg]
 
@@ -285,6 +296,41 @@ def ler_IPC(pid):
 	else:
 		return (False, None, None)
 
+def installpkg(dev, pkg):
+	pkg_exists = os.path.exists(f"../pkg/{pkg}.py")
+	if shutil.which("git") and not pkg_exists:
+		os.system(f'git clone https://github.com/{dev}/{pkg}-aurox-pkg.git ../pkg')
+		if os.path.exists(f"../pkg/{pkg}.py"):
+			return (True, "pacote instalado")
+		else:
+			return (False, "pacote não existe")
+	else:
+		if pkg_exists:
+			return (False, "pacote já existe")
+		else:
+			return (False, "git não instalado")
+
+def delpkg(pkg):
+	os.remove(f"../pkg/{pkg}.py")
+
+def listpkg():
+	bruto = os.listdir('../pkg')
+	for i, files in enumerate(bruto):
+		bruto[i] = files.replace('.py', '')
+	return bruto
+
+def usepkg(pkg, comando="main", parametros=()):
+	if comado == "main":
+		pkg = __import__(pkg)
+		funcao = getattr(pkg, comando)
+		funcao(parametros)
+
+def checkpkg(pkg):
+	if os.path.exists(f"../pkg/{pkg}.py"):
+		return True
+	else:
+		return False
+		
 boot_anim()
 idle = True
 idled = False
@@ -953,7 +999,10 @@ APPC = {
 "ler_IPC": ler_IPC,
 "limpar_IPC": limpar_IPC,
 "criar_processo_filho": criar_processo_filho,
-"__builtins__":  __builtins__
+"__builtins__":  __builtins__,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg
 }
 
 SYSC = {
@@ -975,7 +1024,12 @@ SYSC = {
 "CPFS": CPFS,
 "initapp": initapp,
 'PHC': PHC,
-"reboot": reboot
+"reboot": reboot,
+"installpkg": installpkg,
+"delpkg": delpkg,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg
 }
 
 containers = {}
@@ -1135,6 +1189,9 @@ if __name__ == "__main__":
 	if debug: print(f"📁 {len(system_code_)} codigos do sistema foram encontrados")
 	if "./system/modules" not in sys.path:
 		sys.path.insert(0, "./system/modules")
+	if "./pkg" not in sys.path:
+		sys.path.insert(0, "./pkg")
+	
 	erro_no_tmp_m = 0
 	existe_init = False
 	if os.path.exists("system/code/init.py") and os.path.isfile("system/code/init.py"):
