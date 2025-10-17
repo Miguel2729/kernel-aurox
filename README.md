@@ -208,7 +208,7 @@ ok, pid = VED(None, "init", "name")
 ---
 ---
 # namespaces do kernel
-- o kernel executa namespaces separados para apps e a distro
+- o kernel executa namespaces separados para apps e a distro e o kernel
 namespaces:
 ```python
 APPC = {
@@ -223,7 +223,13 @@ APPC = {
 "__builtins__":  __builtins__,
 "listpkg": listpkg,
 "usepkg": usepkg,
-"checkpkg": checkpkg
+"checkpkg": checkpkg,
+"os": os,
+"time": time,
+"shutil": shutil,
+"import2": __import__,
+"random": random,
+'sys_pid': sys_pid
 }
 
 SYSC = {
@@ -244,13 +250,53 @@ SYSC = {
 "criar_processo_filho": criar_processo_filho,
 "CPFS": CPFS,
 "initapp": initapp,
+"reboot": reboot,
+"installpkg": installpkg,
+"delpkg": delpkg,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg,
+"os": os,
+"sys": sys,
+"time": time,
+"shutil": shutil,
+"random": random,
+"import2": __import__,
+"sys_pid": sys_pid
+}
+
+KRNLC = {
+'__name__': __name__,
+"__builtins__": __builtins__,
+"VED": VED,
+"mnt": mnt,
+"umnt": umnt,
+"configurar_fs": configurar_fs,
+"matar_proc": matar_proc,
+"distro": distro,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"pwroff_krnl": pwroff_krnl,
+"debug": debug,
+"CPFS": CPFS,
+"initapp": initapp,
 'PHC': PHC,
 "reboot": reboot,
 "installpkg": installpkg,
 "delpkg": delpkg,
 "listpkg": listpkg,
 "usepkg": usepkg,
-"checkpkg": checkpkg
+"checkpkg": checkpkg,
+"os": os,
+"sys": sys,
+"time": time,
+"shutil": shutil,
+"random": random,
+"import2": __import__,
+"sys_pid": sys_pid,
+"VSP": VSP
 }
 
 ```
