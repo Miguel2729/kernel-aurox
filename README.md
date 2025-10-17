@@ -18,8 +18,9 @@ sua_distribuicao/
 │   ├── modules/           # Módulos Python personalizados
 │   ├── tmp/               # Diretório temporário do sistema
 │   ├── apps/              # Aplicativos do sistema
-│   └── shell              # Shell executável (obrigatório - script sh sem extensão)
+│   └── shell              # Shell executável (opcional - script sh sem extensão)
 ├── mnt/                   # Ponto de montagem para filesystems
+├── pkg/                   # pacotes instalados
 └── kernel.py              # Kernel principal (obrigatório)
 ```
 
@@ -31,7 +32,8 @@ sua_distribuicao/
 - **system/modules/** → Módulos Python adicionais  
 - **system/tmp/** → Arquivos temporários  
 - **system/apps/** → Aplicativos do sistema  
-- **mnt/** → Filesystems montados com `mnt()` e `configurar_fs()`  
+- **mnt/** → Filesystems montados com `mnt()` e `configurar_fs()`
+- **pkg/** → Pacotes instalados
 
 ---
 
@@ -45,11 +47,12 @@ A classe `distro` é usada pelas distribuições Aurox para definir nome, versã
 testsOS = distro(
 	nome="MinhaDistro", ver="1.0",
 	fs=["rootfs"], nomefs=["sistema"],
-	cfgfs=[[("diretorio", "/tmp", {"sync_mode": "mirror", "intervalo": 0.10})]],
+	cfgfs=[("diretorio", "/tmp", {"sync_mode": "mirror", "intervalo": 0.10})],
 	services=["vfs.py", "audio.py", "tools.py"],
 	serv_reset_m=False,
 	ipc=True
-	ufs=True # significa "umount filesystems on shutdown"
+	ufs=True # significa "umount filesystems on shutdown",
+	pkgs=[["gabriel123", "editor"], ["enzo46321", "internet"]]
 )
 ```
 
@@ -59,10 +62,24 @@ testsOS = distro(
 
 ### O que colocar em `system/code/`
 
-- `init.py`: script de inicialização principal (executado primeiro se existir)  
-- Serviços e daemons em background  
-- Ferramentas e utilitários de sistema  
-- Drivers simulados com `configurar_fs()`  
+- `init.py`: script de inicialização principal (o único a ser executado se existir)  
+- Serviços e daemons em background    
+- Drivers simulados(ou não) com `configurar_fs()`
+
+### desenvolvimento pacotes aurox
+---
+deve ser hm repositório do github
+estrutura do repositório:
+```tree
+[pacote]-aurox-pkg
+└── [pacote].py
+```
+por exemplo se a distro tentar instalar um pacote chamado "editor", o aurox irá converter para "editor-aurox-pkg"
+#### como dev ser [pacote].py?:
+deve ser um módulo python, cada comando do pacote deve ser uma função(def), e a função main é obrigatória para comportamento padrão, todas as funções deve ter apenas um parâmetro, que vai ser uma tupla ou lista com todos os parâmetros da função
+
+- não deve ter mais arquivos além do [pacote].py, se possível
+---
 
 ### Exemplo de `init.py`
 
@@ -153,6 +170,21 @@ ler_IPC(pid)
 limpar_IPC(pid)
 # Limpa o buffer IPC do processo
 ```
+---
+# 🗂 Gerenciamento de pacotes
+```python
+installpkg(dev, pkg)
+# instala um pacote, github, requer git instalado
+
+delpkg(pkg)
+# deleta um pacote
+
+usepkg(pkg, comando="main", parametros=())
+# usa um pacote
+
+checkpkg(pkg)
+# verifica se um pacote existe
+```
 
 VED(pid, nome, x)
 # Localiza processos ativos pelo PID ou nome.
@@ -188,7 +220,10 @@ APPC = {
 "ler_IPC": ler_IPC,
 "limpar_IPC": limpar_IPC,
 "criar_processo_filho": criar_processo_filho,
-"__builtins__":  __builtins__
+"__builtins__":  __builtins__,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg
 }
 
 SYSC = {
@@ -210,8 +245,14 @@ SYSC = {
 "CPFS": CPFS,
 "initapp": initapp,
 'PHC': PHC,
-"reboot": reboot
+"reboot": reboot,
+"installpkg": installpkg,
+"delpkg": delpkg,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg
 }
+
 ```
 ---
 
