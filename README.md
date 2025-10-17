@@ -229,7 +229,8 @@ APPC = {
 "shutil": shutil,
 "import2": __import__,
 "random": random,
-'sys_pid': sys_pid
+'sys_pid': sys_pid,
+"domestico": domestico
 }
 
 SYSC = {
@@ -262,7 +263,8 @@ SYSC = {
 "shutil": shutil,
 "random": random,
 "import2": __import__,
-"sys_pid": sys_pid
+"sys_pid": sys_pid,
+"domestico": domestico
 }
 
 KRNLC = {
