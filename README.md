@@ -1,7 +1,7 @@
-# 🧠 Kernel Aurox
+![logo](logo10_17_10307.png)
 
-O **Kernel Aurox** é um kernel simulador projetado para criar **distribuições personalizadas** do sistema Aurox.  
-Ele é **educacional** e permite montar e simular ambientes completos com suporte a processos, arquivos e sistemas de arquivos.
+O **Kernel Aurox** é um kernel simulador(mais a maioria dos recursos é funcional) projetado para criar **distribuições personalizadas** do sistema Aurox.  
+Ele é **educacional** e **produtivo** e permite montar e fazer ambientes completos com suporte a processos, arquivos, sistemas de arquivos e pacotes.
 
 ---
 
