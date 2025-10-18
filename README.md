@@ -154,8 +154,34 @@ configurar_fs(nomefs, tipo, destino, parametros)
 #   'servidorweb': www_dir, protocolo, porta
 #   'servidor': protocolo, porta, servidor_arquivos, servidor_servicos
 # para obter mais informações pode olhar o código de kernel.py, não tem problema, é licença MIT
-```
 
+LFV(nomefs)
+# lista recursiva e com conteúdo de arquivos de texto dos arquivos de um filesystem
+
+```
+---
+### 🔐 permissões
+```python
+# apenas no namespace SYSC
+# permissões possíveis:
+# net
+# filesystems
+# matar
+# matarsys
+# ambiente
+# sistema
+
+addperm(app, perm)
+# adiciona permissão
+delperm(app, perm)
+# Remove permissão
+default_perm(app)
+# redefinir permissões para padrão
+
+MCA(appc)
+# modifica o namespace "APPC" para o Parâmetro "appc"
+```
+---
 ---
 
 ### 🔗 Comunicação entre Processos (IPC)
@@ -212,7 +238,7 @@ ok, pid = VED(None, "init", "name")
 namespaces:
 ```python
 APPC = {
-"__name__": __name__,
+"__name__": "__app__",
 "VED": VED,
 "matar_proc": matar_proc,
 "listar_proc": listar_proc,
@@ -230,17 +256,18 @@ APPC = {
 "import2": __import__,
 "random": random,
 'sys_pid': sys_pid,
-"domestico": domestico
+"domestico": domestico,
+"LFV": LFV
 }
 
 SYSC = {
-'__name__': __name__,
+'__name__': "__distro__",
 "__builtins__": __builtins__,
 "mnt": mnt,
 "umnt": umnt,
 "configurar_fs": configurar_fs,
 "matar_proc": matar_proc,
-"APPC": APPC,
+"MCA": MCA,
 "distro": distro,
 "listar_proc": listar_proc,
 "IPC": IPC,
@@ -264,11 +291,15 @@ SYSC = {
 "random": random,
 "import2": __import__,
 "sys_pid": sys_pid,
-"domestico": domestico
+"domestico": domestico,
+"addperm": addperm,
+"delperm": delperm,
+"default_perm": default_perm,
+"LFV": LFV
 }
 
 KRNLC = {
-'__name__': __name__,
+'__name__': "__aurox__",
 "__builtins__": __builtins__,
 "VED": VED,
 "mnt": mnt,
@@ -298,12 +329,16 @@ KRNLC = {
 "random": random,
 "import2": __import__,
 "sys_pid": sys_pid,
-"VSP": VSP
+"VSP": VSP,
+"DistroError": DistroError,
+"AuroxError": AuroxError,
+"appperms": appperms,
+"perm_padrao": perm_padrao,
+"LFV": LFV
 }
 
 ```
 ---
-
 # ⚠️ Avisos Importantes
 
 - ⚙️ pode ser usado em contextos educacionais, Simulações e produtivos
