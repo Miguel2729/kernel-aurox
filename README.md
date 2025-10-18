@@ -147,7 +147,7 @@ configurar_fs(nomefs, tipo, destino, parametros)
 # Configura um filesystem montado
 # Tipos: 'hardware', 'diretorio', 'codigo_paralelo', 'rede'
 # Parâmetros por tipo:
-#   'hardware': sem parâmetros
+#   'hardware': aut
 #   'diretorio': sync_mode, criar_diretorio, intervalo
 #   'codigo_paralelo': intervalo
 #   'rede': protocolo, porta
