@@ -1182,7 +1182,7 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                 
                 elif tipo_especial == 'temperature':
                     temp_c = ler_temperatura_real()
-                    temp_f = temp_c * 9/5 + 32 if temp_c not is None else: None
+                    temp_f = temp_c * 9/5 + 32 if temp_c is not None else None
                     
                     with open(os.path.join(mount_point, 'c.txt'), 'w') as f:
                         f.write(f'{{temp_c:.1f}}')
