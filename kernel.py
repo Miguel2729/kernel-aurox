@@ -67,6 +67,179 @@ def boot_anim():
 		if i == 4:
 			os.system("clear")
 
+def auroxperm(perms=None, app_name=None):
+    """
+    Decorador para definir permissões de APPS (processos) no Aurox
+    
+    Parâmetros:
+    perms: dict - Dicionário de permissões
+    app_name: str - Nome do aplicativo
+    
+    Permissões:
+    - filesystems: bool - acesso a mnt, umnt, configurar_fs
+    - net: bool - acesso a módulos de rede
+    - matar: bool - matar processos (exceto sys_pid)  
+    - matarsys: bool - matar qualquer processo
+    - sistema: bool - acesso completo ao sistema
+    - ambiente: bool - modificar namespaces
+    """
+    
+    if perms is None:
+        perms = {}
+    
+    def decorator(app_code):
+        """
+        app_code é o código fonte do app (string)
+        que será executado como processo
+        """
+        
+        # Nome do app
+        nome_final = app_name or "AppSemNome"
+        
+        # Permissões validadas
+        permissoes = {
+            'filesystems': perms.get('filesystems', False),
+            'net': perms.get('net', False),
+            'matar': perms.get('matar', False),
+            'matarsys': perms.get('matarsys', False),
+            'sistema': perms.get('sistema', False),
+            'ambiente': perms.get('ambiente', False)
+        }
+        
+        # 🔒 Aplicar restrições no código do app
+        codigo_modificado = _aplicar_restricoes(app_code, permissoes, nome_final)
+        
+        # Registrar permissões no sistema (para o initapp usar)
+        if not hasattr(auroxperm, 'apps_registrados'):
+            auroxperm.apps_registrados = {}
+        
+        auroxperm.apps_registrados[nome_final] = {
+            'codigo_original': app_code,
+            'codigo_modificado': codigo_modificado,
+            'permissoes': permissoes,
+            'namespace': _criar_namespace_seguro(permissoes)
+        }
+        
+        return codigo_modificado
+    
+    return decorator
+
+def _aplicar_restricoes(codigo, permissoes, app_name):
+    """Aplica restrições de permissões no código do app"""
+    
+    codigo_modificado = codigo
+    
+    # 1. Remover imports perigosos se sem permissão
+    if not permissoes['net']:
+        codigo_modificado = _remover_imports_rede(codigo_modificado)
+    
+    # 2. Substituir chamadas a funções restritas
+    if not permissoes['filesystems']:
+        codigo_modificado = _substituir_chamadas_fs(codigo_modificado)
+    
+    # 3. Adicionar verificações de segurança
+    codigo_modificado = _adicionar_verificacoes_seguranca(codigo_modificado, permissoes, app_name)
+    
+    return codigo_modificado
+
+def _remover_imports_rede(codigo):
+    """Remove imports de módulos de rede"""
+    imports_rede = [
+        'import http.server', 'from http.server import',
+        'import socket', 'from socket import', 
+        'import socketserver', 'from socketserver import'
+    ]
+    
+    for import_line in imports_rede:
+        codigo = codigo.replace(import_line, f'# 🔒 BLOQUEADO: {import_line}')
+    
+    return codigo
+
+def _substituir_chamadas_fs(codigo):
+    """Substitui chamadas a funções de filesystem"""
+    funcoes_fs = {
+        'mnt(': '_funcao_bloqueada("mnt")(',
+        'umnt(': '_funcao_bloqueada("umnt")(',
+        'configurar_fs(': '_funcao_bloqueada("configurar_fs")('
+    }
+    
+    for funcao, substituicao in funcoes_fs.items():
+        codigo = codigo.replace(funcao, substituicao)
+    
+    return codigo
+
+def _adicionar_verificacoes_seguranca(codigo, permissoes, app_name):
+    """Adiciona verificações de segurança no código"""
+    
+    header_seguranca = f'''
+# 🔒 EXECUÇÃO SEGURA - App: {app_name}
+# Permissões: {permissoes}
+
+def _verificar_permissao_matar(pid):
+    """Verifica se app pode matar processo"""
+    if not {permissoes['matar']} and not {permissoes['matarsys']}:
+        raise AuroxError("App não tem permissão para matar processos")
+    if {permissoes['matar']} and pid in sys_pid:
+        raise AuroxError("App não pode matar processos do sistema")
+
+# Substituição segura de matar_proc
+def _matar_proc_seguro(pid, log=True):
+    _verificar_permissao_matar(pid)
+    return matar_proc(pid, log)
+
+'''
+    
+    # Substituir matar_proc pela versão segura
+    if not permissoes['matarsys']:
+        codigo = codigo.replace('matar_proc(', '_matar_proc_seguro(')
+    
+    return header_seguranca + codigo
+
+def _funcao_bloqueada(nome_funcao):
+    """Retorna função que levanta erro quando chamada"""
+    def bloqueada(*args, **kwargs):
+        raise AuroxError(f"App não tem permissão para usar {nome_funcao}")
+    return bloqueada
+
+def _criar_namespace_seguro(permissoes):
+    """Cria namespace seguro para o app baseado nas permissões"""
+    namespace = APPC.copy()  # Começa com namespace básico
+    
+    # Remover funções baseado nas permissões
+    if not permissoes['filesystems']:
+        namespace.pop('mnt', None)
+        namespace.pop('umnt', None) 
+        namespace.pop('configurar_fs', None)
+    
+    if not permissoes['net']:
+        # Remover acesso a módulos de rede
+        pass  # Já tratado na modificação do código
+    
+    if not permissoes['matar'] and not permissoes['matarsys']:
+        namespace['matar_proc'] = _funcao_bloqueada('matar_proc')
+    
+    return namespace
+
+perm_padrao = {"net": True, "matar": True, "matarsys": False, "filesystems": False, "ambiente": False, "sistema": False}
+
+appperms = {}
+apps = os.listdir("./system/apps")
+for app in apps:
+	nome = app.replace(".py", "")
+	appperms[nome] = perm_padrao
+
+def addperm(perm, app):
+	global appperms
+	appperms[app][perm] = True
+
+def delperm(perm, app):
+	global appperms
+	appperms[app][perm] = False
+
+def default_perm(app):
+	global appperms
+	appperms[app] = perm_padrao
+
 class domestico:
 	@dataclass
 	class email:
@@ -478,7 +651,7 @@ def reboot():
 
 print(f"status_idle: {str(idle)}")
 def initapp(app, reset_m, log, son=False, pidpai=None):
-	global tmp_m, hw_instan
+	global tmp_m, hw_instan, appperms
 	
 	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
 	slot_disponivel = None
@@ -493,11 +666,28 @@ def initapp(app, reset_m, log, son=False, pidpai=None):
 	
 	os.chdir("./apps/")
 	with open(app + ".py", "r") as aplicativo:
-		codigo = aplicativo.read()
+		codigo_original = aplicativo.read()
+		
+		# 🆕 SISTEMA DE PERMISSÕES - Verificar permissões na variável global appperms
+		codigo_final = codigo_original
+		namespace_app = APPC  # Namespace padrão
+		
+		if app in appperms:
+			# 🎯 App tem permissões definidas na distro - aplicar restrições
+			permissoes = appperms[app]
+			if log: print(f"🔒 Aplicando permissões para {app}: {permissoes}")
+			
+			codigo_final = _aplicar_restricoes_app(codigo_original, app, permissoes)
+			namespace_app = _criar_namespace_app(app, permissoes)
+		else:
+			# 🔒 App sem permissões definidas - aplicar restrições padrão
+			if log: print(f"⚠️ App {app} não tem permissões definidas em appperms - usando restrições padrão")
+			codigo_final = _aplicar_restricoes_padrao(codigo_original, app)
+			namespace_app = _criar_namespace_padrao()
 		
 		if reset_m:
 			# Reset mas mantém a instância do hardware
-			tmp_m = [(codigo, app, APPC)]
+			tmp_m = [(codigo_final, app, namespace_app)]
 			hw_instan.memory = tmp_m
 			hw_instan.num = 0
 			hw_instan.ppn = {}
@@ -511,10 +701,10 @@ def initapp(app, reset_m, log, son=False, pidpai=None):
 			
 			# Garantir que tmp_m tenha espaço suficiente
 			while len(tmp_m) <= memory_index:
-				tmp_m.append((None, None, None))  # Preencher com placeholders
+				tmp_m.append((None, None, None))
 			
 			# Colocar o app no slot livre
-			tmp_m[memory_index] = (codigo, app, APPC)
+			tmp_m[memory_index] = (codigo_final, app, namespace_app)
 			hw_instan.memory = tmp_m
 			
 			# 🆕 Forçar a CPU a processar a partir deste slot
@@ -524,9 +714,136 @@ def initapp(app, reset_m, log, son=False, pidpai=None):
 			b = random.randint(1000, 9999)
 			hw_instan.ppn[b] = [b, app, [], memory_index, False, None]
 			
-			if log: print(f"📱 App {app} carregado no slot {memory_index} (PID {b}) - aguardando execução pela CPU")
+			if log: 
+				perm_info = "com permissões personalizadas" if app in appperms else "com restrições padrão"
+				print(f"📱 App {app} carregado no slot {memory_index} (PID {b}) {perm_info}")
 	
 	os.chdir("..")
+
+# 🆕 FUNÇÕES AUXILIARES PARA SISTEMA DE PERMISSÕES
+
+def _aplicar_restricoes_app(codigo, app_name, permissoes):
+	"""Aplica restrições baseado nas permissões definidas na distro"""
+	codigo_modificado = codigo
+	
+	# 🔒 Restrições de filesystems
+	if not permissoes.get('filesystems', False):
+		codigo_modificado = _remover_chamadas_fs(codigo_modificado, app_name)
+	
+	# 🔒 Restrições de rede
+	if not permissoes.get('net', False):
+		codigo_modificado = _remover_imports_rede(codigo_modificado, app_name)
+	
+	# 🔒 Restrições de matar processos
+	if not permissoes.get('matar', False) and not permissoes.get('matarsys', False):
+		codigo_modificado = _bloquear_matar_proc(codigo_modificado, app_name)
+	elif permissoes.get('matar', False) and not permissoes.get('matarsys', False):
+		codigo_modificado = _proteger_matar_sistema(codigo_modificado, app_name)
+	
+	return codigo_modificado
+
+def _criar_namespace_app(app_name, permissoes):
+	"""Cria namespace personalizado baseado nas permissões da distro"""
+	namespace = APPC.copy()
+	
+	# 🔒 Aplicar restrições no namespace
+	if not permissoes.get('filesystems', False):
+		namespace['mnt'] = _funcao_bloqueada('mnt', f"App {app_name} sem permissão filesystems")
+		namespace['umnt'] = _funcao_bloqueada('umnt', f"App {app_name} sem permissão filesystems")
+		namespace['configurar_fs'] = _funcao_bloqueada('configurar_fs', f"App {app_name} sem permissão filesystems")
+	
+	if not permissoes.get('matar', False) and not permissoes.get('matarsys', False):
+		namespace['matar_proc'] = _funcao_bloqueada('matar_proc', f"App {app_name} sem permissão matar")
+	elif permissoes.get('matar', False) and not permissoes.get('matarsys', False):
+		# Substitui por versão protegida
+		def _matar_protected(pid, log=True):
+			if pid in sys_pid:
+				raise AuroxError(f"App {app_name} não pode matar processo do sistema PID {pid}")
+			return matar_proc(pid, log)
+		namespace['matar_proc'] = _matar_protected
+	
+	return namespace
+
+def _aplicar_restricoes_padrao(codigo, app_name):
+	"""Aplica restrições padrão para apps sem permissões definidas"""
+	codigo_modificado = codigo
+	
+	# 🔒 Restrições máximas por padrão
+	codigo_modificado = _remover_chamadas_fs(codigo_modificado, app_name)
+	codigo_modificado = _remover_imports_rede(codigo_modificado, app_name)
+	codigo_modificado = _bloquear_matar_proc(codigo_modificado, app_name)
+	
+	return codigo_modificado
+
+def _criar_namespace_padrao():
+	"""Cria namespace com restrições máximas"""
+	namespace = APPC.copy()
+	
+	# 🔒 Bloquear tudo por padrão
+	funcoes_perigosas = ['mnt', 'umnt', 'configurar_fs', 'matar_proc']
+	for funcao in funcoes_perigosas:
+		if funcao in namespace:
+			namespace[funcao] = _funcao_bloqueada(funcao, "App sem permissões definidas")
+	
+	return namespace
+
+def _funcao_bloqueada(nome_funcao, motivo):
+	"""Retorna função que levanta erro quando chamada"""
+	def bloqueada(*args, **kwargs):
+		raise AuroxError(f"🔒 {motivo}: {nome_funcao}")
+	return bloqueada
+
+def _remover_chamadas_fs(codigo, app_name):
+	"""Substitui chamadas a funções de filesystem"""
+	funcoes_fs = ['mnt', 'umnt', 'configurar_fs']
+	
+	for funcao in funcoes_fs:
+		codigo = codigo.replace(
+			f'{funcao}(',
+			f'_funcao_bloqueada("{funcao}", "App {app_name} sem permissão filesystems")('
+		)
+	
+	return codigo
+
+def _remover_imports_rede(codigo, app_name):
+	"""Remove imports de módulos de rede"""
+	imports_rede = [
+		'import http.server',
+		'from http.server import',
+		'import socket', 
+		'from socket import',
+		'import socketserver',
+		'from socketserver import'
+	]
+	
+	for import_line in imports_rede:
+		codigo = codigo.replace(
+			import_line,
+			f'# 🔒 PERMISSÃO NEGADA: {import_line} (app {app_name} sem permissão net)'
+		)
+	
+	return codigo
+
+def _bloquear_matar_proc(codigo, app_name):
+	"""Bloqueia função matar_proc"""
+	codigo = codigo.replace(
+		'matar_proc(',
+		f'_funcao_bloqueada("matar_proc", "App {app_name} sem permissão matar")('
+	)
+	return codigo
+
+def _proteger_matar_sistema(codigo, app_name):
+	"""Substitui matar_proc por versão que protege processos do sistema"""
+	protecao_code = f'''
+def _matar_proc_protegido(pid, log=True):
+	"""Versão protegida de matar_proc"""
+	if pid in sys_pid:
+		raise AuroxError("App '{app_name}' não pode matar processos do sistema PID {{pid}}")
+	return matar_proc(pid, log)
+
+'''
+	codigo = codigo.replace('matar_proc(', '_matar_proc_protegido(')
+	return protecao_code + codigo
 
 def initson_sys(codigo, nome, pidpai):
 	global tmp_m, hw_instan
@@ -652,6 +969,52 @@ def criar_processo_filho(pai, nome, codigo):
 def CPFS(pai, nome, codigo):
 	initson_sys(codigo, nome, pai)
 	
+import os
+
+def ler_temperatura_real():
+    """
+    Lê temperatura real do sistema (Linux)
+    Retorna temperatura em Celsius ou None se não disponível
+    """
+    try:
+        # Tentar diferentes caminhos comuns de temperatura
+        caminhos_temperatura = [
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/hwmon/hwmon0/temp1_input", 
+            "/sys/class/hwmon/hwmon1/temp1_input",
+            "/sys/devices/virtual/thermal/thermal_zone0/temp"
+        ]
+        
+        for caminho in caminhos_temperatura:
+            if os.path.exists(caminho):
+                with open(caminho, 'r') as f:
+                    temp_millic = int(f.read().strip())
+                    temp_c = temp_millic / 1000.0  # Converter millicelsius para celsius
+                    return temp_c
+        
+        # Se não encontrou, tentar comando 'sensors'
+        try:
+            import subprocess
+            result = subprocess.run(['sensors'], capture_output=True, text=True)
+            if 'Core 0' in result.stdout:
+                # Extrair temperatura do output (exemplo: "Core 0:       +45.0°C")
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    if 'Core 0' in line or 'temp1' in line:
+                        import re
+                        match = re.search(r'([+-]?\d+\.\d+)°C', line)
+                        if match:
+                            return float(match.group(1))
+        except:
+            pass
+            
+        return None  # Temperatura não disponível
+        
+    except Exception as e:
+        print(f"Erro ao ler temperatura: {e}")
+        return None
+
+
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
     """
     Conecta um filesystem montado a um destino real do sistema
@@ -818,9 +1181,8 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                         f.write('1')
                 
                 elif tipo_especial == 'temperature':
-                    # Simulação de temperatura (em sistemas reais, ler de /sys/class/thermal)
-                    temp_c = 45.5
-                    temp_f = temp_c * 9/5 + 32
+                    temp_c = ler_temperatura_real()
+                    temp_f = temp_c * 9/5 + 32 if temp_c not is None else: None
                     
                     with open(os.path.join(mount_point, 'c.txt'), 'w') as f:
                         f.write(f'{{temp_c:.1f}}')
@@ -1498,7 +1860,10 @@ SYSC = {
 "random": random,
 "import2": __import__,
 "sys_pid": sys_pid,
-"domestico": domestico
+"domestico": domestico,
+"addperm": addperm,
+"delperm": delperm,
+"default_perm": default_perm
 }
 
 KRNLC = {
@@ -1534,7 +1899,9 @@ KRNLC = {
 "sys_pid": sys_pid,
 "VSP": VSP,
 "DistroError": DistroError,
-"AuroxError": AuroxError
+"AuroxError": AuroxError,
+"appperms": appperms,
+"perm_padrao": perm_padrao
 }
 
 
@@ -1714,17 +2081,35 @@ if __name__ == "__main__":
 	tmp_m.append((x, "VSP Kernel Service", KRNLC))
 	
 	y = """while True:
-	time.sleep(0.5)
+	time.sleep(7)
 	ab, a = VED(None, "PHC Kernel Service", "name")
 	bb, b = VED(None, "VSP Kernel Service", "name")
+	cb, c = VED(None, "UPL Kernel Service", "name")
 	if not ab:
 		raise AuroxError("PHC killed")
 		sys.exit(1)
 	if not bb:
 		raise AuroxError("VSP killed")
+		sys.exit(1)
+	if not cb:
+		raise AuroxError("UPL killed")
 		sys.exit(1)"""
 	
 	tmp_m.append((y, "KSP Kernel Service", KRNLC))
+	
+	z = """while True:
+	time.sleep(3)
+	a = os.listdir("./apps")
+	apps_sem_extensao = [app.replace('.py', '') for app in a if app.endswith('.py')]
+	
+	# ✅ CORREÇÃO: Criar novo dicionário em vez de modificar durante iteração
+	novo_appperms = {}
+	for app in apps_sem_extensao:
+		novo_appperms[app] = appperms.get(app, perm_padrao)
+	
+	appperms.clear()
+	appperms.update(novo_appperms)"""
+	tmp_m.append((z, "UPL Kernel Service", KRNLC))
 	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
