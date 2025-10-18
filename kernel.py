@@ -1014,6 +1014,152 @@ def ler_temperatura_real():
         print(f"Erro ao ler temperatura: {e}")
         return None
 
+def ler_uso_cpu_real():
+    """Lê uso real da CPU do sistema Linux"""
+    try:
+        with open('/proc/stat', 'r') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            if line.startswith('cpu '):
+                parts = line.split()
+                # Campos: user, nice, system, idle, iowait, irq, softirq
+                user = int(parts[1])
+                nice = int(parts[2])
+                system = int(parts[3])
+                idle = int(parts[4])
+                iowait = int(parts[5])
+                
+                total = user + nice + system + idle + iowait
+                used = total - idle
+                
+                if total > 0:
+                    return (used / total) * 100  # Percentual
+        return 0
+    except:
+        return None
+
+def ler_uso_ram_real():
+    """Lê uso real de memória RAM do sistema Linux"""
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            lines = f.readlines()
+        
+        mem_total = 0
+        mem_available = 0
+        
+        for line in lines:
+            if line.startswith('MemTotal:'):
+                mem_total = int(line.split()[1])  # Em KB
+            elif line.startswith('MemAvailable:'):
+                mem_available = int(line.split()[1])  # Em KB
+        
+        if mem_total > 0:
+            mem_used = mem_total - mem_available
+            return (mem_used / mem_total) * 100  # Percentual
+        return 0
+    except:
+        return None
+
+def ler_bateria_real():
+    """Lê status real da bateria (se disponível)"""
+    try:
+        # Tentar caminhos comuns de bateria
+        caminhos_bateria = [
+            "/sys/class/power_supply/BAT0/capacity",
+            "/sys/class/power_supply/BAT1/capacity", 
+            "/proc/acpi/battery/BAT0/info"
+        ]
+        
+        for caminho in caminhos_bateria:
+            if os.path.exists(caminho):
+                with open(caminho, 'r') as f:
+                    conteudo = f.read().strip()
+                    # Extrair número (ex: "85" ou "capacity: 85")
+                    import re
+                    match = re.search(r'(\d+)', conteudo)
+                    if match:
+                        return int(match.group(1))  # Percentual
+        
+        return None  # Sem bateria detectada
+    except:
+        return None
+
+def ler_status_audio_out_real():
+    """Verifica status real do áudio de saída"""
+    try:
+        import subprocess
+        
+        # Método 1: amixer (ALSA)
+        result = subprocess.run(['amixer', 'get', 'Master'], 
+                              capture_output=True, text=True)
+        if '[on]' in result.stdout:
+            return "ativo"
+        elif '[off]' in result.stdout:
+            return "mudo"
+        
+        # Método 2: pactl (PulseAudio)
+        result = subprocess.run(['pactl', 'list', 'sinks'], 
+                              capture_output=True, text=True)
+        if 'State: RUNNING' in result.stdout:
+            return "ativo"
+        else:
+            return "inativo"
+            
+    except:
+        return "indisponivel"
+
+def ler_status_audio_in_real():
+    """Verifica status real do áudio de entrada"""
+    try:
+        import subprocess
+        
+        # Método 1: amixer (ALSA)
+        result = subprocess.run(['amixer', 'get', 'Capture'], 
+                              capture_output=True, text=True)
+        if '[on]' in result.stdout:
+            return "ativo"
+        elif '[off]' in result.stdout:
+            return "mudo"
+        
+        # Método 2: pactl (PulseAudio)
+        result = subprocess.run(['pactl', 'list', 'sources'], 
+                              capture_output=True, text=True)
+        if 'State: RUNNING' in result.stdout:
+            return "ativo"
+        else:
+            return "inativo"
+            
+    except:
+        return "indisponivel"
+
+def MCA(appc):
+	global APPC
+	APPC = appc
+
+def ler_status_bluetooth_real():
+    """Verifica status real do Bluetooth"""
+    try:
+        import subprocess
+        
+        # Método 1: rfkill
+        result = subprocess.run(['rfkill', 'list'], capture_output=True, text=True)
+        if 'bluetooth' in result.stdout.lower():
+            if 'unblocked' in result.stdout.lower():
+                return "ativo"
+            else:
+                return "inativo"
+        
+        # Método 2: systemctl
+        result = subprocess.run(['systemctl', 'status', 'bluetooth'], 
+                              capture_output=True, text=True)
+        if 'active (running)' in result.stdout:
+            return "ativo"
+        else:
+            return "inativo"
+            
+    except:
+        return "indisponivel"
 
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
     """
@@ -1080,6 +1226,9 @@ def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
                 **{f'serial{i}': f'/dev/ttyS{i}' for i in range(31)},
                 **{f'SERIAL{i}': f'/dev/ttyS{i}' for i in range(31)},
                 
+                **{"wifi": "/sys/class/net/wlan0"},
+                
+                
                 # Dispositivos especiais
                 'null': '/dev/null',
                 'zero': '/dev/zero',
@@ -1089,6 +1238,12 @@ def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
                 'temperatura': 'special://temperature',
                 'one': 'special://one',
                 'HDMI': 'special://hdmi',
+                "audio_out_status": "special://audio_out_status",
+                "audio_in_status": "special://audio_in_status",
+                "cpu_u": "special://cpu_u",
+                "mem_u": "special://mem_u",
+                "bluetooth": "special://bluetooth",
+                "battery": "special://battery",
                 
                 # Dispositivos de entrada
                 **{f'input{i}': f'/dev/input/event{i}' for i in range(10)},
@@ -1157,28 +1312,28 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                 elif tipo_especial == 'zero':
                     # Sempre retorna zero
                     zero_file = os.path.join(mount_point, 'zero.bin')
-                    with open(zero_file, 'wb') as f:
-                        f.write(b'\\x00' * 1024)  # 1KB de zeros
+                    with open("zero", 'wb') as f:
+                        f.write(b'\x00' * 1024)  # 1KB de zeros
                 
                 elif tipo_especial == 'true':
                     true_file = os.path.join(mount_point, 'true.txt')
-                    with open(true_file, 'w') as f:
-                        f.write('true')
+                    with open("true_file", 'w') as f:
+                        f.write('True')
                 
                 elif tipo_especial == 'false':
                     false_file = os.path.join(mount_point, 'false.txt')
-                    with open(false_file, 'w') as f:
-                        f.write('false')
+                    with open("false_file", 'w') as f:
+                        f.write('False')
                 
                 elif tipo_especial == 'none':
                     none_file = os.path.join(mount_point, 'none.txt')
-                    with open(none_file, 'w') as f:
+                    with open("none_file", 'w') as f:
                         f.write('None')
                 
                 elif tipo_especial == 'one':
                     one_file = os.path.join(mount_point, 'one.txt')
-                    with open(one_file, 'w') as f:
-                        f.write('1')
+                    with open("one", 'wb') as f:
+                        f.write(b'\x11' * 1024)
                 
                 elif tipo_especial == 'temperature':
                     temp_c = ler_temperatura_real()
@@ -1193,6 +1348,35 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                     hdmi_file = os.path.join(mount_point, 'hdmi.status')
                     with open(hdmi_file, 'w') as f:
                         f.write('connected')
+                elif tipo_especial == "audio_in_status":
+                    status = ler_status_audio_in_real()
+                    with open(os.path.join(mount_point, "status.txt"), "w") as f:
+                        f.write(status)
+                elif tipo_especial == "audio_out_status":
+                    status = ler_status_audio_out_real()
+                    with open(os.path.join(mount_point, "status.txt"), "w") as f:
+                        f.write(status)
+                elif tipo_especial == "cpu_u":
+                    u = ler_uso_cpu_real()
+                    with open(os.path.join(mount_point, "usage.txt"), "w") as f:
+                        f.write(u)
+                elif tipo_especial == "mem_u":
+                    u = ler_uso_ram_real()
+                    with open(os.path.join(mount_point, "usage.txt"), "w") as f:
+                        f.write(u)
+                elif tipo_especial == "battery":
+                    p = ler_bateria_real()
+                    with open(os.path.join(mount_point, "percent.txt"), "w") as f:
+                        f.write(p)
+                 elif tipo_especial == "bluetooth":
+                    status = ler_status_bluetooth_real()
+                    with open(os.path.join(mount_point, "status.txt"), "w") as f:
+                        f.write(status)
+                
+                
+                
+                
+                
                 
                 elif tipo_especial.startswith('portable'):
                     # Espelhamento de pen-drive (simulação)
@@ -1805,10 +1989,98 @@ def umnt(nomefs):
         print(f"Erro ao desmontar {mount_point}: {e}")
         return False
 
- 
+
+
+
+def LFV(nomefs):
+    """
+    Cria um dicionário com a estrutura de arquivos do diretório ../mnt/{nomefs}
+    
+    Args:
+        nomefs (str): Nome do sistema de arquivos
+        
+    Returns:
+        dict: Dicionário com a estrutura de arquivos e conteúdo dos arquivos de texto
+    """
+    caminho_base = f"../mnt/{nomefs}"
+    
+    # Verifica se o diretório existe
+    if not os.path.exists(caminho_base):
+        raise FileNotFoundError(f"Diretório {caminho_base} não encontrado")
+    
+    def explorar_diretorio(caminho):
+        """
+        Função recursiva para explorar diretórios e arquivos
+        """
+        estrutura = {}
+        
+        try:
+            itens = os.listdir(caminho)
+        except PermissionError:
+            estrutura['_erro'] = 'Permissão negada'
+            return estrutura
+        
+        for item in itens:
+            caminho_completo = os.path.join(caminho, item)
+            
+            if os.path.isdir(caminho_completo):
+                # É um diretório - explora recursivamente
+                estrutura[item] = explorar_diretorio(caminho_completo)
+            else:
+                # É um arquivo
+                info_arquivo = {
+                    'tipo': 'arquivo',
+                    'tamanho': os.path.getsize(caminho_completo)
+                }
+                
+                # Verifica se é um arquivo de texto e lê o conteúdo
+                if é_arquivo_texto(item):
+                    try:
+                        with open(caminho_completo, 'r', encoding='utf-8') as f:
+                            info_arquivo['conteudo'] = f.read()
+                    except (UnicodeDecodeError, PermissionError, IOError):
+                        info_arquivo['conteudo'] = None
+                        info_arquivo['erro_leitura'] = True
+                
+                estrutura[item] = info_arquivo
+        
+        return estrutura
+    
+    def é_arquivo_texto(nome_arquivo):
+        """
+        Verifica se um arquivo é provavelmente um arquivo de texto
+        baseado na extensão
+        """
+        extensoes_texto = {
+            '.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml',
+            '.csv', '.log', '.conf', '.cfg', '.ini', '.yml', '.yaml',
+            '.java', '.c', '.cpp', '.h', '.php', '.rb', '.pl', '.sh', '.bat',
+            '.ps1', '.sql', '.r', '.m', '.swift', '.kt', '.go', '.rs'
+        }
+        
+        _, extensao = os.path.splitext(nome_arquivo)
+        return extensao.lower() in extensoes_texto
+    
+    # Inicia a exploração do diretório base
+    return explorar_diretorio(caminho_base)
+
+# Exemplo de uso:
+if __name__ == "__main__":
+    try:
+        # Exemplo de uso da função
+        estrutura = LFV("meu_filesystem")
+        
+        # Exibe a estrutura de forma organizada
+        import json
+        print(json.dumps(estrutura, indent=2, ensure_ascii=False))
+        
+    except FileNotFoundError as e:
+        print(f"Erro: {e}")
+    except Exception as e:
+        print(f"Erro inesperado: {e}")
 
 APPC = {
-"__name__": __name__,
+"__name__": "__app__",
 "VED": VED,
 "matar_proc": matar_proc,
 "listar_proc": listar_proc,
@@ -1826,17 +2098,18 @@ APPC = {
 "import2": __import__,
 "random": random,
 'sys_pid': sys_pid,
-"domestico": domestico
+"domestico": domestico,
+"LFV": LFV
 }
 
 SYSC = {
-'__name__': __name__,
+'__name__': "__distro__",
 "__builtins__": __builtins__,
 "mnt": mnt,
 "umnt": umnt,
 "configurar_fs": configurar_fs,
 "matar_proc": matar_proc,
-"APPC": APPC,
+"MCA": MCA,
 "distro": distro,
 "listar_proc": listar_proc,
 "IPC": IPC,
@@ -1863,11 +2136,12 @@ SYSC = {
 "domestico": domestico,
 "addperm": addperm,
 "delperm": delperm,
-"default_perm": default_perm
+"default_perm": default_perm,
+"LFV": LFV
 }
 
 KRNLC = {
-'__name__': __name__,
+'__name__': "__aurox__",
 "__builtins__": __builtins__,
 "VED": VED,
 "mnt": mnt,
@@ -1901,7 +2175,8 @@ KRNLC = {
 "DistroError": DistroError,
 "AuroxError": AuroxError,
 "appperms": appperms,
-"perm_padrao": perm_padrao
+"perm_padrao": perm_padrao,
+"LFV": LFV
 }
 
 
