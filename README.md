@@ -315,6 +315,7 @@ KRNLC = {
 - ✅️ os processos são executados dentro do kernel em contexto global, não como módulos separados, pode se comunicar(usar funções do kernel) com o kernel sem importar
 - 📦 todos os processos tem um container criado pelo kernel, não é preciso se preocupar com o nome das variávei
 - ▶️ na lista do parâmetro services da classe distro, coloque os serviços na ordem que deseja que eles sejam inicializados
+- 🚫 se o desenvolvedor perceber simulação ele transforma em funcional
 ---
 
 ## 🚀 Começando
