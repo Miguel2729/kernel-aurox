@@ -33,6 +33,9 @@ informacoes:
 
 sys_pid = []
 
+
+
+
 import threading as th
 import os
 import shutil
@@ -41,6 +44,20 @@ import time
 import random
 from dataclasses import dataclass
 from typing import Optional, List, Dict
+class DistroError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        print(f"❌ DistroError: {message}")
+        pwroff_krnl()
+        sys.exit(1)  # ✅ SAÍDA AUTOMÁTICA
+
+class AuroxError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        print(f"❌ AuroxError: {message}")
+        pwroff_krnl()
+        sys.exit(1)  # ✅ SAÍDA AUTOMÁTICA
+
 def boot_anim():
 	for i in range(5):
 		os.system("clear")
@@ -77,9 +94,12 @@ class domestico:
 		appdata: Optional[Dict[str, str]] = None
 
 def VSP():
-	global hw_instan
-	global sys_pid
-	global SYSC
+	try:
+		global hw_instan
+		global sys_pid
+		global SYSC
+	except Exception as e:
+		raise AuroxError(f"erro: {e}")
 	sys_pid = []
 	for i in range(len(hw_instan.memory)):
 		if hw_instan.memory[i][2] == SYSC:
@@ -109,14 +129,19 @@ UFS = None
 class distro:
 	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs, pkgs):
 		global tmp_m, hw_instan, distro_cfg, UFS
-		for pacote in pkgs:
-			installpkg(pacote[0], pacote[1])
+		for i, pacote in enumerate(pkgs):
+			if isinstance(pacote, list):
+				installpkg(pacote[0], pacote[1])
+			else:
+				raise DistroError(f"pacote indice {i} não tem conteudo valido: {pacote}")
 		if not distro_cfg:
 			os.makedirs("./info", exist_ok=True)
 			with open("./info/nome.txt", "w") as nomed:
 				nomed.write(nome)
 			with open("./info/ver.txt", "w") as verd:
 				verd.write(ver)
+			if ipc != False and ipc != True:
+				raise DistroError("ipc deve ser True ou False")
 			if not ipc:
 				global IPC
 				global limpar_IPC
@@ -189,6 +214,8 @@ class distro:
 			self.servic = services
 			self.ipccfg = ipc
 		distro_cfg = True
+		if ufs != False and ufs != True:
+			raise DistroError("ufs deve ser True ou False")
 		UFS = ufs
 
 	
@@ -335,6 +362,8 @@ def ler_IPC(pid):
 		return (False, None, None)
 
 def installpkg(dev, pkg):
+	if not os.path.exists("../pkg"):
+		raise DistroError("não existe pkg/")
 	pkg_exists = os.path.exists(f"../pkg/{pkg}.py")
 	if shutil.which("git") and not pkg_exists:
 		os.system(f'git clone https://github.com/{dev}/{pkg}-aurox-pkg.git ../pkg')
@@ -917,7 +946,7 @@ for nome_servico, codigo_servico in {servicos_globais}.items():
 			# 🎯 INSTANCIAR serviço DENTRO do servidor
 			instancia_servico = main()
 			servicos_ativos[nome_servico] = instancia_servico
-			print(f"🎯 Serviço '{{nome_servico}' INICIADO DENTRO DO SERVIDOR")
+			print(f"🎯 Serviço '{{nome_servico}}' INICIADO DENTRO DO SERVIDOR")
 	except Exception as e:
 		print(f"❌ Erro iniciando serviço '{{nome_servico}}': {{e}}")
 
@@ -1311,12 +1340,18 @@ KRNLC = {
 "random": random,
 "import2": __import__,
 "sys_pid": sys_pid,
-"VSP": VSP
+"VSP": VSP,
+"DistroError": DistroError,
+"AuroxError": AuroxError
 }
+
 
 class HWIW:
     def __init__(self, hw_instan):
-        self._hw_instan = hw_instan
+        try:
+        	self._hw_instan = hw_instan
+        except NameError:
+        	raise AuroxError('erro desconhecido')
         
     @property
     def processos_parar(self):
@@ -1326,7 +1361,7 @@ class HWIW:
     def __getattr__(self, name):
         if name == 'processos_parar':
             return self._hw_instan.processos_parar
-        raise AttributeError(f"Acesso restrito a hw_instan.{name}")
+        raise AuroxError(f"Acesso restrito a hw_instan.{name}")
 
 
 
@@ -1361,13 +1396,19 @@ class hardware:
 			if debug and debug_ativo and self.verificacoes % 10 == 0:
 				print(f"📝 Memória tem {len(self.memory)} aplicações:")
 				for i, app in enumerate(self.memory):
-					containers[i] = {}
+					time.sleep(0.4)
 					status = "✅" if i < len(self.mem_prot) and self.mem_prot[i] else "⏳"
 					print(f"  {status} codigo {i}: {app[0][:40]}...")
 			
 			processos_executados = False
 			
 			for i in range(len(self.memory)):
+				if i not in containers:
+					try:
+						containers[i] = {}
+						if debug: print(f"container {i} criado: {containers[i]}")
+					except Exception as e:
+						raise AuroxError(f"erro ao criar container: {e}")
 				if len(list(filter(lambda x: x == True, self.mem_prot))) == 500:
 					if debug and debug_ativo:
 						debug_ativo = False
@@ -1480,6 +1521,19 @@ if __name__ == "__main__":
 
 	tmp_m.append((x, "VSP Kernel Service", KRNLC))
 	
+	y = """while True:
+	time.sleep(0.5)
+	ab, a = VED(None, "PHC Kernel Service", "name")
+	bb, b = VED(None, "VSP Kernel Service", "name")
+	if not ab:
+		raise AuroxError("PHC killed")
+		sys.exit(1)
+	if not bb:
+		raise AuroxError("VSP killed")
+		sys.exit(1)"""
+	
+	tmp_m.append((y, "KSP Kernel Service", KRNLC))
+	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
 	os.environ['TMP'] = tmpd
@@ -1505,13 +1559,15 @@ if __name__ == "__main__":
 				try:
 					tmp_m.append((initfile.read(), "init", SYSC))
 					hw_instan = hardware(tmp_m)
+					time.sleep(0.5)
 					if debug: print(" ✅️ init.py inicializado na memoria")
 				except Exception as e:
 					if debug: print(f"erro ao ler init.py ou erro ao inicializar o init.py na memoria: {e}")
+					raise AuroxError(e)
 			except Exception as e:
 				erro_no_tmp_m += 1
 				if debug: print(f" ⚠️ falha ao abrir init.py: {e}")
-				quit()
+				raise AuroxError(f"erro ao abrir init.py: {e}")
 	else:
 		for i, arquivos in enumerate(system_code_):
 			os.chdir("./system/code")
@@ -1534,7 +1590,8 @@ if __name__ == "__main__":
 	os.system("echo './shell' | tee -a /etc/shells")
 	if debug: print("shell usando")
 	if debug: print(f" 💾 hardware tem {len(tmp_m)} na memoria, {erro_no_tmp_m} nao foram adicionadas por erro")
-	hw_instan = hardware(tmp_m)
+	if "hw_instan" not in globals(): hw_instan = hardware(tmp_m)
+	time.sleep(0.5)
 	# idle processo
 	while idle:
 		if debug and not idled: print(f"debug: idle = {idle}")
