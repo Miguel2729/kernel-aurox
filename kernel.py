@@ -1,4 +1,4 @@
-'''
+ '''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
 	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, installpkg, delpkg, listpkg, usepkg, checkpkg, criar_processo_filho. sem importar o kernel
@@ -1187,6 +1187,98 @@ def ler_status_bluetooth_real():
     except:
         return "indisponivel"
 
+def mapear_evento_legivel(tipo, codigo, valor):
+    """Converte eventos brutos para nomes legíveis"""
+    
+    # Tipos de evento
+    tipos = {
+        0: 'EV_SYN',      # Sincronização
+        1: 'EV_KEY',      # Teclas/botões
+        2: 'EV_REL',      # Movimento relativo (mouse)
+        3: 'EV_ABS',      # Movimento absoluto (touch)
+        4: 'EV_MSC',      # Miscelânea
+        17: 'EV_LED',     # LEDs
+        20: 'EV_REP',     # Repetição
+    }
+    
+    # Teclas do teclado (EV_KEY)
+    teclas = {
+        1: 'ESC',        2: '1',          3: '2',          4: '3',          5: '4',
+        6: '5',          7: '6',          8: '7',          9: '8',          10: '9',
+        11: '0',         12: '-',         13: '=',         14: 'BACKSPACE', 15: 'TAB',
+        16: 'Q',         17: 'W',         18: 'E',         19: 'R',         20: 'T',
+        21: 'Y',         22: 'U',         23: 'I',         24: 'O',         25: 'P',
+        26: '[',         27: ']',         28: 'ENTER',     29: 'CTRL_LEFT', 30: 'A',
+        31: 'S',         32: 'D',         33: 'F',         34: 'G',         35: 'H',
+        36: 'J',         37: 'K',         38: 'L',         39: ';',         40: "'",
+        41: '`',         42: 'SHIFT_LEFT',43: '\\',        44: 'Z',         45: 'X',
+        46: 'C',         47: 'V',         48: 'B',         49: 'N',         50: 'M',
+        51: ',',         52: '.',         53: '/',         54: 'SHIFT_RIGHT',55: '*',
+        56: 'ALT_LEFT',  57: 'SPACE',     58: 'CAPS_LOCK', 59: 'F1',        60: 'F2',
+        61: 'F3',        62: 'F4',        63: 'F5',        64: 'F6',        65: 'F7',
+        66: 'F8',        67: 'F9',        68: 'F10',       69: 'NUM_LOCK',  70: 'SCROLL_LOCK',
+        103: 'UP',       108: 'DOWN',     105: 'LEFT',     106: 'RIGHT',
+        113: 'VOL_MUTE', 114: 'VOL_DOWN', 115: 'VOL_UP',
+    }
+    
+    # Botões do mouse (EV_KEY)
+    botoes_mouse = {
+        272: 'MOUSE_LEFT',    273: 'MOUSE_RIGHT',   274: 'MOUSE_MIDDLE',
+        275: 'MOUSE_SIDE',    276: 'MOUSE_EXTRA',
+    }
+    
+    # Movimento do mouse (EV_REL)
+    movimento_mouse = {
+        0: 'MOUSE_X',    1: 'MOUSE_Y',    2: 'MOUSE_WHEEL',
+        6: 'MOUSE_TILT', 8: 'MOUSE_WHEEL_H',
+    }
+    
+    nome_tipo = tipos.get(tipo, f'TIPO_{tipo}')
+    
+    if tipo == 1:  # EV_KEY
+        nome_codigo = teclas.get(codigo, botoes_mouse.get(codigo, f'KEY_{codigo}'))
+        acao = 'PRESS' if valor == 1 else 'RELEASE' if valor == 0 else f'VAL_{valor}'
+        
+    elif tipo == 2:  # EV_REL
+        nome_codigo = movimento_mouse.get(codigo, f'REL_{codigo}')
+        acao = f'MOV_{valor}'
+        
+    elif tipo == 3:  # EV_ABS (touch)
+        nome_codigo = f'ABS_{codigo}'
+        acao = f'POS_{valor}'
+        
+    else:
+        nome_codigo = f'CODE_{codigo}'
+        acao = f'VAL_{valor}'
+    
+    return f"{nome_tipo} {nome_codigo} {acao}"
+
+def ler_eventos_input_legivel(dispositivo, max_eventos=10):
+    """Lê eventos com nomes legíveis"""
+    try:
+        import struct
+        eventos = []
+        
+        with open(dispositivo, 'rb') as f:
+            for _ in range(max_eventos):
+                try:
+                    data = f.read(16)
+                    if not data:
+                        break
+                    
+                    sec, usec, tipo, codigo, valor = struct.unpack('llHHI', data)
+                    
+                    evento_legivel = mapear_evento_legivel(tipo, codigo, valor)
+                    eventos.append(evento_legivel)
+                        
+                except BlockingIOError:
+                    break
+                    
+        return eventos
+        
+    except Exception as e:
+        return [f"ERRO: {e}"]
+
 def configurar_fs(nomefs, tipo_conectar, onde, parametros=None):
     """
     Conecta um filesystem montado a um destino real do sistema
@@ -1450,6 +1542,12 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                         status_file = os.path.join(mount_point, 'input.status')
                         with open(status_file, 'w') as f:
                             f.write(f'active: {{dispositivo}}')
+                        with open("eventos.txt", "w") as f:
+                            eventos = ler_eventos_legivel(dispositivo, 10)
+                            for evento in eventos:
+                                f.write(f"{evento}\\n")
+                            
+                        
                     
                     # Para outros dispositivos
                     else:
