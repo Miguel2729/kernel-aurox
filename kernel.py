@@ -44,6 +44,7 @@ import time
 import random
 from dataclasses import dataclass
 from typing import Optional, List, Dict
+import glob
 class DistroError(Exception):
     def __init__(self, message):
         super().__init__(message)
@@ -223,7 +224,10 @@ def _criar_namespace_seguro(permissoes):
 perm_padrao = {"net": True, "matar": True, "matarsys": False, "filesystems": False, "ambiente": False, "sistema": False}
 
 appperms = {}
-apps = os.listdir("./system/apps")
+try:
+	apps = os.listdir("./system/apps")
+except Exception:
+	apps = []
 for app in apps:
 	nome = app.replace(".py", "")
 	appperms[nome] = perm_padrao
@@ -298,10 +302,13 @@ def VED(pid, nome, x):
 distro_cfg = False
 # (umount filesystems on shutdown)
 UFS = None
+sys_fs = []
+
 # classe para as distros usarem
 class distro:
 	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs, pkgs):
-		global tmp_m, hw_instan, distro_cfg, UFS
+		global tmp_m, hw_instan, distro_cfg, UFS, sys_fs
+		sys_fs = nomesfs
 		for i, pacote in enumerate(pkgs):
 			if isinstance(pacote, list):
 				installpkg(pacote[0], pacote[1])
@@ -1085,6 +1092,25 @@ def ler_bateria_real():
     except:
         return None
 
+def ler_info_bateria_real(info):
+	a = "/sys/class/power_supply/BAT0"
+	if info == "status":
+		a = a + "/status"
+	elif info == "cap_lev":
+		a = a + "/capacity_level"
+	elif info == "modelo":
+		a = a + "/model_name"
+	elif info == "serial":
+		a = a + '/serial_number'
+	try:
+		with open(a, "r") as f:
+			b = f.read()
+	except PermissionError:
+		b = "acesso negado"
+	except FileNotExistsError:
+		b = "indisponivel"
+	return b
+
 def ler_status_audio_out_real():
     """Verifica status real do áudio de saída"""
     try:
@@ -1366,8 +1392,20 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                         f.write(u)
                 elif tipo_especial == "battery":
                     p = ler_bateria_real()
+                    s = ler_info_bateria_real("status")
+                    cl = ler_info_bateria_real("cap_lev")
+                    serial = ler_info_bateria_real("serial")
+                    m = ler_info_bateria_real("modelo")
                     with open(os.path.join(mount_point, "percent.txt"), "w") as f:
                         f.write(p)
+                    with open(os.path.join(mount_point, "model.txt"), "w") as f:
+                        f.write(m)
+                    with open(os.path.join(mount_point, "serie_n.txt"), "w") as f:
+                        f.write(serial)
+                     with open(os.path.join(mount_point, "capacity_level.txt"), "w") as f:
+                        f.write(cl)
+                     with open(os.path.join(mount_point, "status.txt"), "w") as f:
+                        f.write(s)
                  elif tipo_especial == "bluetooth":
                     status = ler_status_bluetooth_real()
                     with open(os.path.join(mount_point, "status.txt"), "w") as f:
@@ -1434,6 +1472,7 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
         except Exception as e:
             error_file = os.path.join(mount_point, 'hardware.error')
             with open(error_file, 'w') as f:
+                import time
                 f.write(f'{{time.time()}}: {{str(e)}}')
             time.sleep(1)
 
@@ -2079,6 +2118,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Erro inesperado: {e}")
 
+
 APPC = {
 "__name__": "__app__",
 "VED": VED,
@@ -2140,6 +2180,16 @@ SYSC = {
 "LFV": LFV
 }
 
+class hw_instan_return:
+	def __init__(self):
+		pass
+	def ppn(self):
+		return hw_instan.ppn
+	def memory(self):
+		return hw_instan.memory
+	def mem_prot(self):
+		return hw_instan.mem_prot
+
 KRNLC = {
 '__name__': "__aurox__",
 "__builtins__": __builtins__,
@@ -2176,9 +2226,14 @@ KRNLC = {
 "AuroxError": AuroxError,
 "appperms": appperms,
 "perm_padrao": perm_padrao,
-"LFV": LFV
+"LFV": LFV,
+"ler_uso_cpu_real": ler_uso_cpu_real,
+"ler_uso_ram_real": ler_uso_ram_real,
+"hw_instan_return": hw_instan_return,
+"appc": APPC,
+"ler_temperatura_real": ler_temperatura_real,
+"sys_fs": sys_fs
 }
-
 
 class HWIW:
     def __init__(self, hw_instan):
@@ -2385,6 +2440,36 @@ if __name__ == "__main__":
 	appperms.clear()
 	appperms.update(novo_appperms)"""
 	tmp_m.append((z, "UPL Kernel Service", KRNLC))
+	
+	w = """cl = hw_instan_return()
+while True:
+	time.sleep(0.10)
+	a = ler_uso_ram_real()
+	b = ler_uso_cpu_real()
+	if a is not None:
+		if a > 80:
+			for i in range(500):
+				atual = cl.memory()
+				if len(atual) > 380:
+					if atual[i][2] == appc:
+						matar_proc(i, False)
+				fss = os.listdir("../mnt")
+				# desmontar filesystems não nessesarios
+				for fs in fss:
+					if fs not in sys_fs:
+						umnt(fs)
+	if b is not None:
+		if b > 80:
+			for i in range(500):
+				atual = cl.memory()
+				if len(atual) > 380:
+					if atual[i][2] == appc:
+						matar_proc(i, False)
+				fss = os.listdir("../mnt")
+				for fs in fss:
+					if fs not in sys_fs:
+						umnt(fs)"""
+	tmp_m.append((w, 'OPD Kernel Service', KRNLC))
 	
 	# tmp
 	tmpd = os.getcwd() + "/system/tmp"
