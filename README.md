@@ -338,6 +338,40 @@ KRNLC = {
 }
 
 ```
+
+# 📃 como acessar relatório da classe distro?
+Para acessar o relatório da classe distro quando você está criando sua distribuição Aurox, você precisa criar uma instância da classe distro e armazenar essa instância em uma variável. Após a inicialização da distro, o relatório estará disponível no atributo .relat dessa instância.
+
+Por exemplo, no seu código de inicialização da distro (normalmente no arquivo init.py dentro de system/code), você faria assim:
+
+minha_distro = distro(nome="MinhaDistro", ver="1.0", fs=lista_fs, nomesfs=lista_nomes, cfgfs=lista_configs, services=lista_servicos, serv_reset_m=False, ipc=True, ufs=True, pkgs=lista_pacotes, umnt_op_cfg=True)
+
+E depois, para acessar o relatório completo:
+
+relatorio = minha_distro.relat
+
+O relatório é um dicionário que contém informações detalhadas sobre o processo de inicialização, incluindo o status de filesystems, serviços e pacotes. Ele tem a seguinte estrutura:
+
+· relat["pkgs"]: relatório de instalação de pacotes
+· relat["filesys"]: relatório de montagem e configuração de filesystems
+· relat["services"]: relatório de inicialização de serviços
+
+Cada seção do relatório inclui status (ok, errors, partially_ok), contagem de erros e sucessos, timestamp e mensagens de erro detalhadas quando aplicável.
+
+relatório no teste do desenvolvedor(Miguel2729):
+```output
+status_idle: True
+/storage/emulated/0/teste
+modo debug?(S/n): n
+tee: /etc/shells: Read-only file system
+./shell
+🎯 Executando 0 serviços do sistema
+/storage/emulated/0/teste/system>relat
+
+{'pkgs': {'status': 'ok', 'errors': 0, 'successfully': 0, 'time': 1762614721.3094807, 'err_msg': {}}, 'filesys': {'status': 'ok', 'errors': 0, 'successfully': 0, 'time': 1762614721.3193884, 'err_msg': {}}, 'services': {'status': 'ok', 'errors': 0, 'successfully': 0, 'time': 1762614721.3194084, 'err_msg': {}}}
+
+/storage/emulated/0/teste/system>
+```
 ---
 # ⚠️ Avisos Importantes
 
@@ -351,6 +385,7 @@ KRNLC = {
 - 📦 todos os processos tem um container criado pelo kernel, não é preciso se preocupar com o nome das variávei
 - ▶️ na lista do parâmetro services da classe distro, coloque os serviços na ordem que deseja que eles sejam inicializados
 - 🚫 se o desenvolvedor perceber simulação ele transforma em funcional
+- 🚨 pressione crtrl + f + r para forçar reinicio
 ---
 
 ## 🚀 Começando
