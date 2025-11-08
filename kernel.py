@@ -1,4 +1,4 @@
- '''
+'''
 informacoes:
 	1. os processos tem acesso ao kernel porque sao executados dentro do kernel, globalmente
 	2. por causa da informacao 1, apps e distruibuicoes podem usar as funcoes do kernel, elas sao, mnt, umnt, configurar_fs, classe distro, matar_proc, listar_proc, initapp, IPC, limpar_IPC, ler_IPC. VED, installpkg, delpkg, listpkg, usepkg, checkpkg, criar_processo_filho. sem importar o kernel
@@ -45,6 +45,29 @@ import random
 from dataclasses import dataclass
 from typing import Optional, List, Dict
 import glob
+# (NOVO):
+infos = {}
+try:
+	import keyboard
+	infos["kb_forced_reboot_key"] = True
+except Exception:
+	infos["kb_forced_reboot_key"] = False
+
+def FRK():
+	global infos
+	if not infos["kb_forced_reboot_key"]:
+		return
+	else:
+		while True:
+			time.sleep(0.5)
+			if keyboard.is_pressed("ctrl+f+r"):
+				os.execv(sys.executable, ["python"] + sys.argv)
+			else:
+				pass
+
+th_FRK = th.Thread(target=FRK, daemon=False)
+th_FRK.start
+	
 class DistroError(Exception):
     def __init__(self, message):
         super().__init__(message)
@@ -304,16 +327,34 @@ distro_cfg = False
 UFS = None
 sys_fs = []
 
+
+umnt_op = False
+
 # classe para as distros usarem
 class distro:
-	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs, pkgs):
-		global tmp_m, hw_instan, distro_cfg, UFS, sys_fs
+	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs, pkgs, umnt_op_cfg):
+		global tmp_m, hw_instan, distro_cfg, UFS, sys_fs, umnt_op
+		relat = {}
+		err_msg = {}
 		sys_fs = nomesfs
+		umnt_op = umnt_op_cfg
+		pkgs_c = 0
+		pkgs_e = 0
 		for i, pacote in enumerate(pkgs):
 			if isinstance(pacote, list):
-				installpkg(pacote[0], pacote[1])
+				pkg = installpkg(pacote[0], pacote[1])
+				if pkg[0]:
+					pkgs_c += 1
+				else:
+					pkgs_e += 1
 			else:
 				raise DistroError(f"pacote indice {i} não tem conteudo valido: {pacote}")
+		if pkgs_c == len(pkgs):
+			relat["pkgs"] =  {"status": "ok", "errors": pkgs_e, "successfully": pkgs_c, "time": time.time(), "err_msg": {}}
+		elif pkgs_c == 0:
+			relat["pkgs"] = {"status": "errors", "errors": pkgs_e, "successfully": pkgs_c, "time": time.time(), "err_msg": {}}
+		elif pkgs_c >= 1 and not pkgs_c == len(pkgs):
+			relat["pkgs"] = {"status": "partially_ok", "errors": pkgs_e, "successfully": pkgs_c, "time": time.time(), "err_msg": {}}
 		if not distro_cfg:
 			os.makedirs("./info", exist_ok=True)
 			with open("./info/nome.txt", "w") as nomed:
@@ -330,40 +371,60 @@ class distro:
 				IPC = sem_ipc()
 				limpar_IPC = sem_ipc()
 			if debug: print(f"IPC = {ipc}")
+			not_errors = 0
 			if debug: print(f"💿 distro tem {len(nomesfs)} filesystems")
+			err_msg["filesys"] = {}
 			for i, nomefs in enumerate(nomesfs):
 				if debug: print(f"💽 montando {nomefs}({i})...")
+				tmp = 0
 				try:
 					mnt(fs[i], nomefs)
+					tmp += 1
 				except Exception as e:
 					if debug:
 						print(f"⛔️erro ao montar {nomefs}: {e}")
+						err_msg["filesys"][f"{nomefs} | {i}"] = e
+						continue
 					else:
 						print(f"⛔️erro: {e}")
+						err_msg["filesys"][f"{nomefs} | {i}"] = e
 						quit()
 				if debug: print(f"⚙️ configurando {nomefs}")
 				try:
 					configurar_fs(nomefs, cfgfs[i][0], cfgfs[i][1], cfgfs[i][2])
+					tmp += 1
 				except Exception as e:
 					if debug:
 						print(f"⛔️erro ao configurar {nomefs}: {e}")
+						err_msg["filesys"][f"{nomefs} | {i}"] = e
 					else:
 						print(f"⛔️erro: {e}")
+						err_msg["filesys"][f"{nomefs} | {i}"] = e
 						quit()
 				if debug: print(f"✅ montagem e configuração de {nomefs} concluida")
+				if tmp == 2:
+					not_errors += 1
+			if not_errors == len(nomesfs):
+				relat["filesys"] = {"status": "ok", "errors": len(nomesfs) - not_errors, "successfully": not_errors, "time": time.time(), "err_msg": err_msg["filesys"]}
+			elif not_errors == 0:
+				relat["filesys"] =  {"status": "errors", "errors": len(nomesfs) - not_errors, "successfully": not_errors, "time": time.time(), "err_msg": err_msg1["filesys"]}
+			elif not_errors < len(nomesfs) and not not_errors == 0:
+				relat["filesys"] =  {"status": "partially_ok", "errors": len(nomesfs) - not_errors, "successfully": not_errors, "time": time.time(), "err_msg": err_msgqq["filesys"]}
 		
 			# ✅ MANTÉM a lógica original de inicialização do hardware
 			if debug: print(f"⚙️ servicos da distro: {len(services)}")
+			err_msg["services"] = {}
 			service_errors = 0
-			for i, nomes in enumerate(services):
+			for i, nome in enumerate(services):
 				with open("./code/" + nomes, "r") as code:
-					if debug: print(f"📥 lendo {nomes}...")
+					if debug: print(f"📥 lendo {nome}...")
 					if nomes != "init.py":
 						try:
 							tmp_m.append((code.read(), nomes.replace(".py", "")+" service", SYSC))
 						except Exception as e:
 							if debug: print(f"⛔️ falha ao adicionar serviço '{nome}': {e}")
 							service_errors += 1
+							err_msg["services"][f"{nome} | {i}"] = e
 							continue
 						try:
 							if serv_reset_m:
@@ -373,19 +434,28 @@ class distro:
 							if debug: print("⛔️hw_instan indisponivel, provalmente foi deletado antes da configuracao")
 							service_erros = len(services)
 							break
+							err_msg["services"]["all"] = "NameError"
 						try:
 							hw_instan = hardware(tmp_m)
 						except Exception as e:
 							if debug: print(f"⛔️erro desconhecido: {e}")
 							services_errors += 1
+							err_msg["services"][f"{nome} | {i}"] = e
 					else:
 						try:
 							hw_instan.memory = tmp_m
 						except Exception as e:
 							print(f"⛔️erro desconhecido: {e}")
 							service_errors += 1
+							err_msg["services"][f"{nome} | {i}"] = e
 			total_sucesso = len(services) - service_errors
 			if debug: print(f"⚙️ {total_sucesso} servicos adicionados com sucessso, {service_errors} deram erro")
+			if service_errors == 0:
+				relat["services"]  = {"status": "ok", "errors": service_errors, "successfully": total_sucesso, "time": time.time(), "err_msg": err_msg["services"]}
+			elif total_sucesso == 0:
+				relat["services"] = {"status": "error", "errors": service_errors, "successfully": total_sucesso, "time": time.time(), "err_msg": err_msg["services"]}
+			elif total_sucesso < len(services) and not total_sucesso == 0:
+				relat["services"] = {"status": "partially_ok", "errors": service_errors, "successfully": total_sucesso, "time": time.time(), "err_msg": err_msg["services"]}
 		
 			# 🆕 CORREÇÃO: Força a CPU a executar serviços pendentes
 			if 'hw_instan' in globals():
@@ -397,6 +467,8 @@ class distro:
 		if ufs != False and ufs != True:
 			raise DistroError("ufs deve ser True ou False")
 		UFS = ufs
+		
+		self.relat = relat
 
 	
 
@@ -655,6 +727,304 @@ def reboot():
 						quit()
 	globals()['hw_instan'] = hardware(tmp_m)
 	
+
+def LinuxFs():
+    """
+    Monta os filesystems sys, proc e dev REALMENTE - sem simulações
+    """
+    try:
+        # Criar estrutura de diretórios
+        os.makedirs("../mnt/sys", exist_ok=True)
+        os.makedirs("../mnt/proc", exist_ok=True)
+        os.makedirs("../mnt/dev", exist_ok=True)
+        
+        # Filesystem SYS
+        _iniciar_servico_sys()
+        
+        # Filesystem PROC  
+        _iniciar_servico_proc()
+        
+        # Filesystem DEV
+        _iniciar_servico_dev()
+        
+        print("✅ LinuxFs: sys, proc, dev montados REALMENTE")
+        return True
+        
+    except Exception as e:
+        print(f"❌ LinuxFs erro: {e}")
+        return False
+
+def _iniciar_servico_sys():
+    """Servico REAL para filesystem sys"""
+    servico_code = """
+import os
+import time
+import threading
+
+def atualizar_sys():
+    while True:
+        try:
+            # /sys/class/battery/
+            battery_path = "../mnt/sys/class/battery"
+            os.makedirs(battery_path, exist_ok=True)
+            
+            # Informações REAIS da bateria
+            percent = ler_bateria_real()
+            status = ler_info_bateria_real("status")
+            capacity = ler_info_bateria_real("cap_lev")
+            model = ler_info_bateria_real("modelo")
+            serial = ler_info_bateria_real("serial")
+            
+            with open(os.path.join(battery_path, "percent.txt"), "w") as f:
+                f.write(str(percent) if percent else "indisponivel")
+            with open(os.path.join(battery_path, "status.txt"), "w") as f:
+                f.write(status if status else "indisponivel")
+            with open(os.path.join(battery_path, "capacity_level.txt"), "w") as f:
+                f.write(capacity if capacity else "indisponivel")
+            with open(os.path.join(battery_path, "model.txt"), "w") as f:
+                f.write(model if model else "indisponivel")
+            with open(os.path.join(battery_path, "serial.txt"), "w") as f:
+                f.write(serial if serial else "indisponivel")
+
+            # /sys/class/temp/
+            temp_path = "../mnt/sys/class/temp"
+            os.makedirs(temp_path, exist_ok=True)
+            
+            temp_c = ler_temperatura_real()
+            temp_f = temp_c * 9/5 + 32 if temp_c else None
+            
+            with open(os.path.join(temp_path, "c.txt"), "w") as f:
+                f.write(f"{temp_c:.1f}" if temp_c else "indisponivel")
+            with open(os.path.join(temp_path, "f.txt"), "w") as f:
+                f.write(f"{temp_f:.1f}" if temp_f else "indisponivel")
+
+            # /sys/system/
+            system_path = "../mnt/sys/system"
+            os.makedirs(system_path, exist_ok=True)
+            try:
+                for i, cpu in enumerate(glob.glob("/sys/devices/cpu/cpu*"))
+                shutil.rmtree(f"../mnt/sys/system/cpu{i}")
+                shutil.copy2(cpu, f"../mnt/sys/system/cpu{i}")
+            
+            # Processos do sistema REAIS
+            with open(os.path.join(system_path, "sys_pid.txt"), "w") as f:
+                for pid in sys_pid:
+                    f.write(f"{pid}\\n")
+            
+            # Informações do kernel
+            with open(os.path.join(system_path, "kernel_info.txt"), "w") as f:
+                f.write("Aurox Kernel\\n")
+                f.write(f"Processos sistema: {len(sys_pid)}\\n")
+                f.write(f"Timestamp: {time.time()}\\n")
+
+            time.sleep(2)  # Atualizar a cada 2 segundos
+            
+        except Exception as e:
+            print(f"Erro sys: {e}")
+            time.sleep(5)
+
+thread = threading.Thread(target=atualizar_sys, daemon=True)
+thread.start()
+"""
+    exec(servico_code, globals())
+
+def _iniciar_servico_proc():
+    """Servico REAL para filesystem proc"""
+    servico_code = """
+import os
+import time
+import threading
+
+def atualizar_proc():
+    while True:
+        try:
+            # Arquivos globais
+            mem_usage = ler_uso_ram_real()
+            cpu_usage = ler_uso_cpu_real()
+            
+            with open("../mnt/proc/mem_usage.txt", "w") as f:
+                f.write(f"{mem_usage:.1f}" if mem_usage else "indisponivel")
+            with open("../mnt/proc/cpu_usage.txt", "w") as f:
+                f.write(f"{cpu_usage:.1f}" if cpu_usage else "indisponivel")
+
+            # Processos REAIS do sistema
+            for pid, info in hw_instan.ppn.items():
+                pid_path = f"../mnt/proc/{pid}"
+                os.makedirs(pid_path, exist_ok=True)
+                
+                # cmdline - nome do processo
+                with open(os.path.join(pid_path, "cmdline"), "w") as f:
+                    f.write(info[1] if len(info) > 1 else "desconhecido")
+                
+                # exe - tipo de processo
+                with open(os.path.join(pid_path, "exe"), "w") as f:
+                    memory_index = info[3] if len(info) > 3 else None
+                    if memory_index is not None and memory_index < len(hw_instan.memory):
+                        env_type = hw_instan.memory[memory_index][2]
+                        if env_type == APPC:
+                            f.write(f"{os.getcwd()}/apps/{info[1]}.py")
+                        elif env_type == SYSC:
+                            f.write(f"{os.getcwd()}/code/{info[1].replace(" service", "")}.py")
+                        elif env_type == KRNLC:
+                            f.write("kernel")
+                        else:
+                            f.write("desconhecido")
+                    else:
+                        f.write("kernel")  # Processos do kernel
+                
+                # ambiente - namespace
+                with open(os.path.join(pid_path, "ambiente"), "w") as f:
+                    memory_index = info[3] if len(info) > 3 else None
+                    if memory_index is not None and memory_index < len(hw_instan.memory):
+                        env_type = hw_instan.memory[memory_index][2]
+                        if env_type == APPC:
+                            f.write("APPC")
+                        elif env_type == SYSC:
+                            f.write("SYSC") 
+                        elif env_type == KRNLC:
+                            f.write("KRNLC")
+                        else:
+                            f.write("OUTRO")
+                    else:
+                        f.write("KRNLC")
+                
+                # permissions - permissões do app
+                with open(os.path.join(pid_path, "permissions"), "w") as f:
+                    nome_processo = info[1] if len(info) > 1 else ""
+                    if nome_processo in appperms:
+                        perms = appperms[nome_processo]
+                        f.write(str(perms))
+                    else:
+                        f.write("perm_padrao")
+                
+                # Processos filhos - criar dentro da pasta do pai
+                if len(info) > 5 and info[4]:  # is_son = True
+                    pai_pid = info[5]
+                    if pai_pid in hw_instan.ppn:
+                        pai_path = f"../mnt/proc/{pai_pid}/filhos"
+                        os.makedirs(pai_path, exist_ok=True)
+                        with open(os.path.join(pai_path, str(pid)), "w") as f:
+                            f.write(info[1] if len(info) > 1 else "filho")
+
+            # Limpar processos que não existem mais
+            proc_dir = "../mnt/proc"
+            for item in os.listdir(proc_dir):
+                item_path = os.path.join(proc_dir, item)
+                if os.path.isdir(item_path) and item.isdigit():
+                    pid_num = int(item)
+                    if pid_num not in hw_instan.ppn:
+                        shutil.rmtree(item_path)
+
+            time.sleep(3)  # Atualizar a cada 3 segundos
+            
+        except Exception as e:
+            print(f"Erro proc: {e}")
+            time.sleep(5)
+
+thread = threading.Thread(target=atualizar_proc, daemon=True)
+thread.start()
+"""
+    exec(servico_code, globals())
+
+def _iniciar_servico_dev():
+    """Servico REAL para filesystem dev"""
+    servico_code = """
+import os
+import time
+import threading
+import secrets
+import random
+
+def atualizar_dev():
+    while True:
+        try:
+            # /dev/input/
+            input_path = "../mnt/dev/input"
+            os.makedirs(input_path, exist_ok=True)
+            
+            # Eventos REAIS de input
+            for i in range(11):  # event0 a event10
+                event_file = os.path.join(input_path, f"event{i}")
+                eventos = ler_eventos_input_legivel(f"/dev/input/event{i}", 5)
+                with open(event_file, "w") as f:
+                    for evento in eventos:
+                        f.write(f"{evento}\\n")
+
+            # /dev/null/ - TUDO é deletado
+            null_path = "../mnt/dev/null"
+            os.makedirs(null_path, exist_ok=True)
+            for item in os.listdir(null_path):
+                item_path = os.path.join(null_path, item)
+                try:
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                    elif os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                except:
+                    pass
+
+            # /dev/usb/ - conteúdo REAL de pen-drives
+            usb_path = "../mnt/dev/usb"
+            os.makedirs(usb_path, exist_ok=True)
+            
+            # Procurar dispositivos USB REAIS
+            usb_devices = []
+            for device in glob.glob("/sys/bus/usb/devices/*"):
+                if os.path.exists(os.path.join(device, "product")):
+                    usb_devices.append(device)
+            
+            for i, device in enumerate(usb_devices[:10]):  # Máximo 10 dispositivos
+                usb_device_path = os.path.join(usb_path, f"usb{i}")
+                os.makedirs(usb_device_path, exist_ok=True)
+                
+                try:
+                    # Tentar montar se estiver disponível
+                    mount_point = f"/media/usb{i}"
+                    if os.path.exists(mount_point):
+                        for item in os.listdir(mount_point):
+                            source = os.path.join(mount_point, item)
+                            dest = os.path.join(usb_device_path, item)
+                            if os.path.isfile(source) and not os.path.exists(dest):
+                                shutil.copy2(source, dest)
+                except:
+                    pass
+
+            # Arquivos especiais em /dev/
+            # /dev/zero - 1KB de 0x00
+            with open("../mnt/dev/zero", "wb") as f:
+                f.write(b'\\x00' * 1024)
+
+            # /dev/tty - console atual (se possível)
+            try:
+                with open("../mnt/dev/tty", "w") as f:
+                    f.write("terminal_python")
+            except:
+                pass
+
+            # /dev/ttyS0 a /dev/ttyS9 - seriais
+            for i in range(10):
+                tty_path = f"../mnt/dev/ttyS{i}"
+                with open(tty_path, "w") as f:
+                    f.write(f"serial_port_{i}")
+
+            # /dev/random - número aleatório
+            with open("../mnt/dev/random", "w") as f:
+                f.write(str(random.randint(0, 999999999999999)))
+
+            # /dev/urandom - número aleatório criptográfico
+            with open("../mnt/dev/urandom", "w") as f:
+                f.write(str(secrets.randbelow(999999999999999)))
+
+            time.sleep(1)  # Atualizar a cada 1 segundo
+            
+        except Exception as e:
+            print(f"Erro dev: {e}")
+            time.sleep(5)
+
+thread = threading.Thread(target=atualizar_dev, daemon=True)
+thread.start()
+"""
+    exec(servico_code, globals())
 
 print(f"status_idle: {str(idle)}")
 def initapp(app, reset_m, log, son=False, pidpai=None):
@@ -1107,7 +1477,7 @@ def ler_info_bateria_real(info):
 			b = f.read()
 	except PermissionError:
 		b = "acesso negado"
-	except FileNotExistsError:
+	except FileNotFoundError:
 		b = "indisponivel"
 	return b
 
@@ -1362,6 +1732,7 @@ def _conectar_hardware(nomefs, dispositivo, parametros, mount_point):
                 "mem_u": "special://mem_u",
                 "bluetooth": "special://bluetooth",
                 "battery": "special://battery",
+                "audio_status": "special://audio_status",
                 
                 # Dispositivos de entrada
                 **{f'input{i}': f'/dev/input/event{i}' for i in range(10)},
@@ -1466,14 +1837,15 @@ def atualizar_dispositivo_{nomefs.replace('-', '_')}():
                     hdmi_file = os.path.join(mount_point, 'hdmi.status')
                     with open(hdmi_file, 'w') as f:
                         f.write('connected')
-                elif tipo_especial == "audio_in_status":
-                    status = ler_status_audio_in_real()
-                    with open(os.path.join(mount_point, "status.txt"), "w") as f:
-                        f.write(status)
-                elif tipo_especial == "audio_out_status":
-                    status = ler_status_audio_out_real()
-                    with open(os.path.join(mount_point, "status.txt"), "w") as f:
-                        f.write(status)
+                
+                    	f.write(status)
+                elif tipo_especial == "audio_status":
+                     in = ler_status_audio_in_real()
+                     with open(os.path.join(mount_point, "in_status.txt"), "w") as f:
+                        f.write(in)
+                     out = ler_status_audio_out_real
+                     with open(os.path.join(mount_point, "out_status.txt"), "w") as f:
+                        f.write(out)
                 elif tipo_especial == "cpu_u":
                     u = ler_uso_cpu_real()
                     with open(os.path.join(mount_point, "usage.txt"), "w") as f:
@@ -1594,7 +1966,7 @@ def _conectar_diretorio(nomefs, caminho, parametros, mount_point):
     """
     Conecta filesystem a um diretório real do sistema
     """
-    print(f"📁 Conectando '{nomefs}' ao diretório '{caminho}'")
+    print(f"📁 Conectando ao diretório '{caminho}'")
     
     try:
         if not os.path.exists(caminho):
@@ -1614,7 +1986,7 @@ def _conectar_diretorio(nomefs, caminho, parametros, mount_point):
                 if os.path.isfile(item_path):
                     shutil.copy2(item_path, mount_point)
         
-        print(f"✅ Diretório '{caminho}' conectado a '{nomefs}'")
+        print(f"✅ Diretório '{caminho}' conectado")
         return True
         
     except Exception as e:
@@ -1625,7 +1997,7 @@ def _conectar_codigo_paralelo(nomefs, script_path, parametros, mount_point):
     """
     Conecta filesystem a código Python paralelo
     """
-    print(f"🐍 Conectando '{nomefs}' ao código '{script_path}'")
+    print(f"🐍 Conectando ao código '{script_path}'")
     
     try:
         if not os.path.exists(script_path):
@@ -1637,23 +2009,23 @@ def _conectar_codigo_paralelo(nomefs, script_path, parametros, mount_point):
         
         intervalo = parametros.get('intervalo', 1.0)
         
-        servico_code = f"""
+        servico_code = f'''
 import time
 import os
 
 def executar_servico_paralelo():
     while True:
         try:
-            exec('''{codigo}''')
+            exec(f"{codigo}")
         except Exception as e:
-            print(f"Erro no serviço paralelo {{nomefs}}: {{e}}")
+            print(f"Erro no serviço paralelo: {{e}}")
         
         time.sleep({intervalo})
 
 import threading
 thread = threading.Thread(target=executar_servico_paralelo, daemon=True)
 thread.start()
-"""
+'''
         
         exec(servico_code, globals())
         
@@ -1699,7 +2071,7 @@ except Exception as e:
 """
         exec(test_code, globals())
         
-        print(f"✅ Rede '{host}:{porta}' conectada a '{nomefs}'")
+        print(f"✅ Rede '{host}:{porta}' conectada")
         return True
         
     except Exception as e:
@@ -1710,7 +2082,7 @@ def _conectar_servidorweb(nomefs, host, parametros, mount_point):
     """
     Cria um servidor web real no filesystem.
     """
-    print(f"🌐 Iniciando servidor web '{nomefs}' em {host}:{parametros.get('porta', 80)}")
+    print(f"🌐 Iniciando servidor web em {host}:{parametros.get('porta', 80)}")
     
     porta = parametros.get('porta', 80)
     protocolo = parametros.get('protocolo', 'http')
@@ -1761,18 +2133,18 @@ thread.start()
             f.write(f"www_dir: {www_dir}\n")
             f.write(f"status: ativo\n")
 
-        print(f"✅ Servidor web '{nomefs}' rodando em http://{host}:{porta}")
+        print(f"✅ Servidor web rodando em http://{host}:{porta}")
         return True
         
     except Exception as e:
-        print(f"⛔ Erro ao iniciar servidor web {nomefs}: {e}")
+        print(f"⛔ Erro ao iniciar servidor web: {e}")
         return False
 
 def _conectar_servidor(nomefs, host, parametros, mount_point):
     """
     Cria um servidor genérico com serviços específicos.
     """
-    print(f"🖥️ Iniciando servidor '{nomefs}' em {host}:{parametros.get('porta', 8080)}")
+    print(f"🖥️ Iniciando servidor em {host}:{parametros.get('porta', 8080)}")
     
     porta = parametros.get('porta', 8080)
     protocolo = parametros.get('protocolo', 'tcp')
@@ -1915,12 +2287,12 @@ thread.start()
             f.write(f"servicos_ativos: {list(servicos_globais.keys())}\n")
             f.write(f"status: executando\n")
 
-        print(f"✅ Servidor genérico '{nomefs}' rodando em {host}:{porta}")
+        print(f"✅ Servidor genérico rodando em {host}:{porta}")
         print(f"🎯 Serviços EXECUTANDO DENTRO DO SERVIDOR: {list(servicos_globais.keys())}")
         return True
         
     except Exception as e:
-        print(f"⛔ Erro ao iniciar servidor {nomefs}: {e}")
+        print(f"⛔ Erro ao iniciar servidor: {e}")
         return False
 
 
@@ -2192,7 +2564,7 @@ def LFV(nomefs):
             '.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml',
             '.csv', '.log', '.conf', '.cfg', '.ini', '.yml', '.yaml',
             '.java', '.c', '.cpp', '.h', '.php', '.rb', '.pl', '.sh', '.bat',
-            '.ps1', '.sql', '.r', '.m', '.swift', '.kt', '.go', '.rs'
+            '.ps1', '.sql', '.r', '.m', '.swift', '.kt', '.go', '.rs', '.cs'
         }
         
         _, extensao = os.path.splitext(nome_arquivo)
@@ -2201,20 +2573,6 @@ def LFV(nomefs):
     # Inicia a exploração do diretório base
     return explorar_diretorio(caminho_base)
 
-# Exemplo de uso:
-if __name__ == "__main__":
-    try:
-        # Exemplo de uso da função
-        estrutura = LFV("meu_filesystem")
-        
-        # Exibe a estrutura de forma organizada
-        import json
-        print(json.dumps(estrutura, indent=2, ensure_ascii=False))
-        
-    except FileNotFoundError as e:
-        print(f"Erro: {e}")
-    except Exception as e:
-        print(f"Erro inesperado: {e}")
 
 
 APPC = {
@@ -2275,7 +2633,9 @@ SYSC = {
 "addperm": addperm,
 "delperm": delperm,
 "default_perm": default_perm,
-"LFV": LFV
+"LFV": LFV,
+"auroxperm": auroxperm,
+"LinuxFs": LinuxFs
 }
 
 class hw_instan_return:
@@ -2287,6 +2647,11 @@ class hw_instan_return:
 		return hw_instan.memory
 	def mem_prot(self):
 		return hw_instan.mem_prot
+	def all(self):
+		return hw_instan
+
+def exe(comando):
+	comando()
 
 KRNLC = {
 '__name__': "__aurox__",
@@ -2330,7 +2695,9 @@ KRNLC = {
 "hw_instan_return": hw_instan_return,
 "appc": APPC,
 "ler_temperatura_real": ler_temperatura_real,
-"sys_fs": sys_fs
+"sys_fs": sys_fs,
+"exe": exe,
+"umnt_op": umnt_op
 }
 
 class HWIW:
@@ -2483,7 +2850,11 @@ if {pid} in hw_instan.processos_parar:
 			
 			self.verificacoes += 1
 			time.sleep(1)
-				
+
+
+
+
+	
 if __name__ == "__main__":
 	if os.path.exists("./system"):
 		pass
@@ -2551,11 +2922,12 @@ while True:
 				if len(atual) > 380:
 					if atual[i][2] == appc:
 						matar_proc(i, False)
-				fss = os.listdir("../mnt")
-				# desmontar filesystems não nessesarios
-				for fs in fss:
-					if fs not in sys_fs:
-						umnt(fs)
+				if umnt_op:
+					fss = os.listdir("../mnt")
+					# desmontar filesystems não nessesarios
+					for fs in fss:
+						if fs not in sys_fs:
+							umnt(fs)
 	if b is not None:
 		if b > 80:
 			for i in range(500):
@@ -2564,9 +2936,10 @@ while True:
 					if atual[i][2] == appc:
 						matar_proc(i, False)
 				fss = os.listdir("../mnt")
-				for fs in fss:
-					if fs not in sys_fs:
-						umnt(fs)"""
+				if umnt_op:
+					for fs in fss:
+						if fs not in sys_fs:
+							umnt(fs)"""
 	tmp_m.append((w, 'OPD Kernel Service', KRNLC))
 	
 	# tmp
