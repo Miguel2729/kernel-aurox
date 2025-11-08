@@ -66,7 +66,7 @@ def FRK():
 				pass
 
 th_FRK = th.Thread(target=FRK, daemon=False)
-th_FRK.start()
+th_FRK.start
 	
 class DistroError(Exception):
     def __init__(self, message):
@@ -2635,7 +2635,8 @@ SYSC = {
 "default_perm": default_perm,
 "LFV": LFV,
 "auroxperm": auroxperm,
-"LinuxFs": LinuxFs
+"LinuxFs": LinuxFs,
+"VED": VED
 }
 
 class hw_instan_return:
