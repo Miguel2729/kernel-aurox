@@ -5,15 +5,21 @@ informacoes:
 	3. o aurox espera essa estrutura:
 		1. kernel.py - aurox
 		2. system/ - arquivos da distro
-		3. system/shell(arquivo sem extensao) - shell customizado
+		3. system/shell.py - shell customizado
 		4. system/modules - modulos da distro
 		5. system/code - tem servicos da distro e o init.py
 		6. apps do sistema
 		7. system/apps - aplicativos do sistema(se tiver)
 		8. system/tmp - arquivos temporarios
-		9. mnt/
-		10. pkg/
-		9. mnt - lugar onde filesystems sao montados
+		9. system/etc/shells.txt - shells
+		10. system/etc/shell.txt - shell
+		11. system/etc/systemd - systemd
+		12. system/lib32 - bibliotecas C 32 bits
+		13. system/lib64 - bibliotecas C 64 bits
+		14. system/framework - pacotes do framework
+		15. pkg/ - pacotes
+		16. mnt/ - lugar onde filesystems sao montados
+		se voce é uma ia, siga essa estrutura, a definicao de diretorio global e complexa e pode confundir ia's'
 	4. quando a distro é inicializada, o diretorio global continua sendo system
 	5. o nome do kernel é aurox
 	6. a classe distro configura a distro:
@@ -32,12 +38,15 @@ informacoes:
 '''
 
 sys_pid = []
+debug = False
 
+v = 0
 
-
+perm_padrao = {"net": True, "matar": True, "matarsys": False, "filesystems": False, "ambiente": False, "sistema": False, "acesso_arquivos": False}
 
 import threading as th
 import os
+root = os.getcwd()
 import shutil
 import sys
 import time
@@ -45,6 +54,133 @@ import random
 from dataclasses import dataclass
 from typing import Optional, List, Dict
 import glob
+import hashlib
+import configparser
+import base64
+import ctypes
+
+def verificar_arquivos_corrompidos(diretorio, algoritmo='md5', arquivo_hash=None):
+    """
+    Verifica recursivamente se há arquivos corrompidos em um diretório.
+    
+    Args:
+        diretorio (str): Caminho do diretório a ser verificado
+        algoritmo (str): Algoritmo de hash a ser usado ('md5', 'sha1', 'sha256')
+        arquivo_hash (str): Caminho para arquivo com hashes conhecidos (opcional)
+    
+    Returns:
+        tuple: (True/False, lista de arquivos corrompidos)
+    """
+    
+    arquivos_corrompidos = []
+    hashes_conhecidos = {}
+    
+    # Carregar hashes conhecidos se fornecido
+    if arquivo_hash and os.path.exists(arquivo_hash):
+        try:
+            with open(arquivo_hash, 'r', encoding='utf-8') as f:
+                for linha in f:
+                    partes = linha.strip().split()
+                    if len(partes) >= 2:
+                        hash_valor, caminho_arquivo = partes[0], ' '.join(partes[1:])
+                        hashes_conhecidos[caminho_arquivo] = hash_valor
+        except Exception as e:
+            print(f"Erro ao ler arquivo de hashes: {e}")
+    
+    def calcular_hash(caminho_arquivo):
+        """Calcula o hash de um arquivo"""
+        try:
+            hash_obj = hashlib.new(algoritmo)
+            with open(caminho_arquivo, 'rb') as f:
+                for bloco in iter(lambda: f.read(4096), b""):
+                    hash_obj.update(bloco)
+            return hash_obj.hexdigest()
+        except (IOError, OSError, PermissionError) as e:
+            print(f"Erro ao ler arquivo {caminho_arquivo}: {e}")
+            return None
+    
+    def verificar_arquivo(caminho_arquivo):
+        """Verifica se um arquivo está corrompido"""
+        # Verificar se o arquivo está vazio (possível corrupção)
+        try:
+            if os.path.getsize(caminho_arquivo) == 0:
+                return True
+        except OSError:
+            return True
+        
+        # Se temos hashes conhecidos, comparar
+        if hashes_conhecidos:
+            caminho_relativo = os.path.relpath(caminho_arquivo, diretorio)
+            if caminho_relativo in hashes_conhecidos:
+                hash_calculado = calcular_hash(caminho_arquivo)
+                if hash_calculado and hash_calculado != hashes_conhecidos[caminho_relativo]:
+                    return True
+        
+        # Tentar ler o arquivo para detectar corrupção básica
+        try:
+            with open(caminho_arquivo, 'rb') as f:
+                f.read(1)  # Tenta ler pelo menos 1 byte
+            return False
+        except (IOError, OSError, PermissionError):
+            return True
+    
+    # Percorrer recursivamente o diretório
+    for raiz, diretorios, arquivos in os.walk(diretorio):
+        for arquivo in arquivos:
+            caminho_completo = os.path.join(raiz, arquivo)
+            
+            # Pular links simbólicos
+            if os.path.islink(caminho_completo):
+                continue
+                
+            if verificar_arquivo(caminho_completo):
+                arquivos_corrompidos.append(caminho_completo)
+    
+    return (len(arquivos_corrompidos) > 0, arquivos_corrompidos)
+
+# Função auxiliar para criar arquivo de hashes (útil para testes)
+def criar_arquivo_hashes(diretorio, arquivo_saida='hashes.txt', algoritmo='md5'):
+    """
+    Cria um arquivo com hashes de todos os arquivos em um diretório.
+    Útil para verificação futura de corrupção.
+    """
+    hashes = []
+    
+    for raiz, diretorios, arquivos in os.walk(diretorio):
+        for arquivo in arquivos:
+            caminho_completo = os.path.join(raiz, arquivo)
+            caminho_relativo = os.path.relpath(caminho_completo, diretorio)
+            
+            if os.path.islink(caminho_completo):
+                continue
+                
+            try:
+                hash_obj = hashlib.new(algoritmo)
+                with open(caminho_completo, 'rb') as f:
+                    for bloco in iter(lambda: f.read(4096), b""):
+                        hash_obj.update(bloco)
+                hashes.append(f"{hash_obj.hexdigest()} {caminho_relativo}\n")
+            except Exception as e:
+                print(f"Erro ao processar {caminho_completo}: {e}")
+    
+    with open(arquivo_saida, 'w', encoding='utf-8') as f:
+        f.writelines(hashes)
+    
+    print(f"Arquivo de hashes criado: {arquivo_saida}")
+
+arqcor = verificar_arquivos_corrompidos("./system", algoritmo="sha-3")
+if arqcor[0]:
+	while True:
+		print("sistema corronpido")
+		print("1. desligar\n2. iniciar mesmo assim")
+		esc = input("digite 1 ou 2:")
+		if esc == "1":
+			sys.exit(1)
+		elif esc == "2":
+			pass
+			break
+		elif esc != "1" and esc != "2":
+			print("digite 1 ou 2.")
 # (NOVO):
 infos = {}
 try:
@@ -52,21 +188,34 @@ try:
 	infos["kb_forced_reboot_key"] = True
 except Exception:
 	infos["kb_forced_reboot_key"] = False
-
 def FRK():
 	global infos
 	if not infos["kb_forced_reboot_key"]:
 		return
+	
 	else:
+		periodo = 0
 		while True:
-			time.sleep(0.5)
+			time.sleep(0.1) # mais responsivo
 			if keyboard.is_pressed("ctrl+f+r"):
-				os.execv(sys.executable, ["python"] + sys.argv)
+				periodo += 1
+				if periodo >= 50:
+					print("FORCED REBOOT ACTIVATED")
+					if debug:
+						print("executable: " + str(sys.executable))
+						print("args: " + str(sys.argv))
+					os.execv(sys.executable, ["python"] + sys.argv)
+				elif periodo == 30:
+					print("[KERNEL] Press and hold for 2 more second to force a reboot.")
+				elif periodo == 10:
+					print("[KERNEL] Force reboot sequence started...")
 			else:
-				pass
+				if periodo > 0:
+					print("[KERNEL] forced restart cancelled")
+				periodo = 0
 
 th_FRK = th.Thread(target=FRK, daemon=False)
-th_FRK.start
+th_FRK.start()
 	
 class DistroError(Exception):
     def __init__(self, message):
@@ -127,7 +276,8 @@ def auroxperm(perms=None, app_name=None):
             'matar': perms.get('matar', False),
             'matarsys': perms.get('matarsys', False),
             'sistema': perms.get('sistema', False),
-            'ambiente': perms.get('ambiente', False)
+            'ambiente': perms.get('ambiente', False),
+            'acesso_arquivos': perms.get('acesso_arquivos', False)
         }
         
         # 🔒 Aplicar restrições no código do app
@@ -241,10 +391,19 @@ def _criar_namespace_seguro(permissoes):
     
     if not permissoes['matar'] and not permissoes['matarsys']:
         namespace['matar_proc'] = _funcao_bloqueada('matar_proc')
+    if not permissoes['acesso_arquivos']:
+         import types
+         nb = types.ModuleType("temporario")
+         tmp = __builtins__
+         for nome in dir(tmp):
+             if nome != "open":
+                obj = getattr(tmp, nome)
+                setattr(nb, nome, obj)
+         namespace['__builtins__'] = nb
     
     return namespace
 
-perm_padrao = {"net": True, "matar": True, "matarsys": False, "filesystems": False, "ambiente": False, "sistema": False}
+
 
 appperms = {}
 try:
@@ -328,12 +487,14 @@ UFS = None
 sys_fs = []
 
 
+
+bootcfg = {"not_init": ["init.py"], "sys_dir": "./", "init": ["default"], "suported_hostsys": ["posix", "nt"], "perm_padrao:": perm_padrao}
 umnt_op = False
 
 # classe para as distros usarem
 class distro:
 	def __init__(self, nome, ver, fs, nomesfs, cfgfs, services, serv_reset_m, ipc, ufs, pkgs, umnt_op_cfg):
-		global tmp_m, hw_instan, distro_cfg, UFS, sys_fs, umnt_op
+		global tmp_m, hw_instan, distro_cfg, UFS, sys_fs, umnt_op, bootcfg
 		relat = {}
 		err_msg = {}
 		sys_fs = nomesfs
@@ -418,7 +579,7 @@ class distro:
 			for i, nome in enumerate(services):
 				with open("./code/" + nomes, "r") as code:
 					if debug: print(f"📥 lendo {nome}...")
-					if nomes != "init.py":
+					if nome not in bootcfg["not_init"]:
 						try:
 							tmp_m.append((code.read(), nomes.replace(".py", "")+" service", SYSC))
 						except Exception as e:
@@ -618,7 +779,7 @@ def installpkg(dev, pkg):
 		raise DistroError("não existe pkg/")
 	pkg_exists = os.path.exists(f"../pkg/{pkg}.py")
 	if shutil.which("git") and not pkg_exists:
-		os.system(f'git clone https://github.com/{dev}/{pkg}-aurox-pkg.git ../pkg')
+		os.system(f'git clone https://github.com/{dev}/{pkg}-aurox-pkg.git ../pkg > /dev/null 2>&1')
 		if os.path.exists(f"../pkg/{pkg}.py"):
 			return (True, "pacote instalado")
 		else:
@@ -630,33 +791,43 @@ def installpkg(dev, pkg):
 			return (False, "git não instalado")
 
 def delpkg(pkg):
+	global sysd
 	os.remove(f"../pkg/{pkg}.py")
 
 def listpkg():
+	global sysd
 	bruto = os.listdir('../pkg')
 	for i, files in enumerate(bruto):
 		bruto[i] = files.replace('.py', '')
 	return bruto
 
-def usepkg(pkg, comando="main", parametros=()):
-	if comado == "main":
-		pkg = __import__(pkg)
-		funcao = getattr(pkg, comando)
+def usepkg(pkg, comando="main", parametros=(), capture_return=False):
+	pkg = __import__(pkg)
+	funcao = getattr(pkg, comando)
+	if capture_return:
+		chamada = funcao(parametros)
+		return chamada
+	else:
 		funcao(parametros)
-
+		return None
+			
+		
 def checkpkg(pkg):
+	global sysd
 	if os.path.exists(f"../pkg/{pkg}.py"):
 		return True
 	else:
 		return False
-		
-boot_anim()
+if __name__ == "__main__":
+	boot_anim()
 idle = True
 idled = False
 def pwroff_krnl(exit=True):
 	global hw_instan
 	global idle
 	global UFS
+	global knic_exec
+	knic_exec = False
 	print("desligando...")
 	time.sleep(0.4)
 	print("encerrando processos...")
@@ -709,7 +880,7 @@ def reboot():
 	if os.path.exists('code/init.py'):
 		try:
 			with open("code/init.py", "r") as f:
-				tmp_m.append((f.read(), "init"))
+				tmp_m.append((f.read(), "init", SYSC))
 		except Exception:
 			pass
 			quit()
@@ -802,9 +973,11 @@ def atualizar_sys():
             system_path = "../mnt/sys/system"
             os.makedirs(system_path, exist_ok=True)
             try:
-                for i, cpu in enumerate(glob.glob("/sys/devices/cpu/cpu*"))
-                shutil.rmtree(f"../mnt/sys/system/cpu{i}")
-                shutil.copy2(cpu, f"../mnt/sys/system/cpu{i}")
+                for i, cpu in enumerate(glob.glob("/sys/devices/cpu/cpu*")):
+                    shutil.rmtree(f"../mnt/sys/system/cpu{i}")
+                    shutil.copy2(cpu, f"../mnt/sys/system/cpu{i}")
+            except Exception:
+                pass
             
             # Processos do sistema REAIS
             with open(os.path.join(system_path, "sys_pid.txt"), "w") as f:
@@ -1026,10 +1199,10 @@ thread.start()
 """
     exec(servico_code, globals())
 
-print(f"status_idle: {str(idle)}")
+if v < 2 and __name__ == "__main__": print(f"status_idle: {str(idle)}")
+v += 1
 def initapp(app, reset_m, log, son=False, pidpai=None):
 	global tmp_m, hw_instan, appperms
-	
 	# 🆕 CORREÇÃO: Encontrar o PRIMEIRO slot disponível
 	slot_disponivel = None
 	for i in range(len(hw_instan.mem_prot)):
@@ -1529,9 +1702,14 @@ def ler_status_audio_in_real():
     except:
         return "indisponivel"
 
-def MCA(appc):
+def MCA(operation, appc=None, value=None, name=None):
 	global APPC
-	APPC = appc
+	if operation == "set":
+		APPC = appc
+	if operation == "add":
+		APPC[name] = value
+	if operation == "del":
+		del APPC[name]
 
 def ler_status_bluetooth_real():
     """Verifica status real do Bluetooth"""
@@ -1589,6 +1767,7 @@ def mapear_evento_legivel(tipo, codigo, valor):
         66: 'F8',        67: 'F9',        68: 'F10',       69: 'NUM_LOCK',  70: 'SCROLL_LOCK',
         103: 'UP',       108: 'DOWN',     105: 'LEFT',     106: 'RIGHT',
         113: 'VOL_MUTE', 114: 'VOL_DOWN', 115: 'VOL_UP',
+        125: "SUPER", 107: "PRINT_SCREEN",
     }
     
     # Botões do mouse (EV_KEY)
@@ -2299,6 +2478,11 @@ thread.start()
 # Mantenha as funções matar_proc e listar_proc como estão, mas adicione:
 
 def matar_proc(pid, log):
+	global containers
+	try:
+		del containers[pid]
+	except NameError:
+		pass
 	try:
 		if 'hw_instan' in globals():
 			# ✅ CORREÇÃO: Guardar relação pai-filho ANTES de modificar ppn
@@ -2405,15 +2589,24 @@ def listar_proc(printp):
         if printp: print(f"Erro ao listar processos: {e}")
         return None
     return procs
-print(os.getcwd())
+
 if __name__ == "__main__":
-	a = input("modo debug?(S/n): ")
-	if a == "S" or a == "s":
+	print(os.getcwd())
+cmd_atived = False
+if __name__ == "__main__":
+	a = input("modo debug?, c para terminal(S/n/c): ")
+	if a.lower() == "s":
 		debug = True
 		del a
-	else:
+	elif a.lower() == "n":
 		debug = False
 		del a
+	elif a.lower() == "c":
+		cmd_atived = True
+	else:
+		print("digite s, n ou c!")
+		quit()
+		
 
 def mnt(fs, nomefs):
     """
@@ -2573,6 +2766,610 @@ def LFV(nomefs):
     # Inicia a exploração do diretório base
     return explorar_diretorio(caminho_base)
 
+def calcular_hash_zip(arquivo_zip, algoritmo='sha256'):
+    """Calcula o hash do arquivo ZIP em si"""
+    with open(arquivo_zip, 'rb') as f:
+        # Lê o arquivo todo de uma vez (para ZIPs não muito grandes)
+        dados = f.read()
+    
+    if algoritmo == 'md5':
+        hash_calculado = hashlib.md5(dados).hexdigest()
+    elif algoritmo == 'sha1':
+        hash_calculado = hashlib.sha1(dados).hexdigest()
+    elif algoritmo == 'sha256':
+        hash_calculado = hashlib.sha256(dados).hexdigest()
+    else:
+        raise ValueError("Algoritmo não suportado")
+    
+    return hash_calculado
+
+def carregar_como_plugin(file, name):
+    """Carrega um .aex como plugin"""
+    
+    # 1. Extrair normalmente
+    os.makedirs("./tmp/run", exist_ok=True)
+    os.rename(file, file.replace(".aex", ".zip"))
+    
+    with zipfile.ZipFile(file.replace(".aex", ".zip"), "r") as zip:
+        zip.extractall(f"./tmp/run/{file.replace('.aex', '')}")
+    
+    os.chdir(f"./tmp/run/{file.replace('.aex', '')}")
+    
+    # 2. Ler código do plugin
+    with open("exe.py", "r") as f:
+        codigo_plugin = f.read()
+    
+    # 3. Registrar plugin no sistema (NÃO executar)
+    a, d = VED(None, "plugins service", "name")
+    IPC(d, {"action": "register", "code": codigo_plugin}, -1, "kernel")
+    
+    
+    
+    print(f"✅ Plugin '{name}' registrado (aguardando uso)")
+    
+    # 4. Limpar e restaurar
+    os.chdir('../../..')
+    shutil.rmtree(f"./tmp/run/{file.replace('.aex', '')}")
+    os.rename(file.replace('.aex', ".zip"), file)
+    
+    return (True, "Plugin registrado com sucesso")
+
+def carregar_como_library(file, name):
+    """Carrega um .aex como biblioteca"""
+    
+    # 1. Extrair normalmente
+    os.makedirs("./tmp/run", exist_ok=True)
+    os.rename(file, file.replace(".aex", ".zip"))
+    
+    with zipfile.ZipFile(file.replace(".aex", ".zip"), "r") as zip:
+        zip.extractall(f"./tmp/run/{file.replace('.aex', '')}")
+    
+    os.chdir(f"./tmp/run/{file.replace('.aex', '')}")
+    
+    # 2. Ler código da biblioteca
+    with open("exe.py", "r") as f:
+        codigo_library = f.read()
+    
+    # 3. Compilar e registrar como módulo
+    try:
+        # Criar módulo Python real
+        library_module = types.ModuleType(f"lib_{name}")
+        
+        # Executar código no módulo
+        exec(codigo_library, library_module.__dict__)
+        
+        # Registrar nos módulos do sistema
+        sys.modules[f"lib_{name}"] = library_module
+        
+        # Adicionar ao path se tiver interface pública
+        if hasattr(library_module, 'init'):
+            library_module.init()
+            
+        print(f"✅ Biblioteca '{name}' carregada como 'lib_{name}'")
+        
+    except Exception as e:
+        print(f"❌ Erro ao carregar biblioteca: {e}")
+        os.chdir('../../..')
+        shutil.rmtree(f"./tmp/run/{file.replace('.aex', '')}")
+        os.rename(file.replace('.aex', ".zip"), file)
+        return (False, f"Erro: {e}")
+    
+    # 4. Limpar e restaurar
+    os.chdir('../../..')
+    shutil.rmtree(f"./tmp/run/{file.replace('.aex', '')}")
+    os.rename(file.replace('.aex', ".zip"), file)
+    
+    return (True, f"Biblioteca disponível como 'lib_{name}'")
+
+def exec_aex(file, sandbox):
+	# ipcs para processos sao processos que a distro implementa não o kernel, kernel não é o dono de system/, pkg/, e nem mnt/, sao da distro
+	global hw_instan, modulotmp, APPC, SYSC
+	import zipfile
+	import os
+	if sandbox == "<app>":
+		sandbox == APPC
+	elif sandbox == "<sys>":
+		sandbox == SYSC
+	else:
+		pass # faz nada, permite namespace customizado
+	if not file.endswith(".aex"):
+		return (False, "não é um arquivo .aex")
+	os.makedirs("./tmp/run", exist_ok=True)
+	os.rename(file, file.replace(".aex", ".zip"))
+	with zipfile.ZipFile(file.replace(".aex", ".zip"), "r") as zip:
+		zip.extractall(f"./tmp/run/{file.replace('.aex', '')}")
+	os.chdir(f"./tmp/run/{file.replace('.aex', '')}")
+	with open('../../../info/nome.txt') as f:
+		dn = f.read()
+	tmp = os.listdir()
+	
+	if "exe.py" in tmp:
+		with open("exe.py", "r") as f:
+			a = f.read()
+			a_copy = a
+			a = compile(a, "<string>", mode="exec", optimize=2)
+			interpr_esp = "py"
+	elif "exe.code" in tmp:
+		with open("exe.code", "r") as f:
+			a = f.read()
+			interpr_esp = "outro"
+	
+	with open("exe.type", "r") as f:
+		type = f.read()
+
+	if type == "<interpr>":
+		c, d = VED(None, "interpreters manager service", "name")
+		IPC(d, {"action": "register", "interpreter": file, "code": None}, -1, 'kernel')
+	
+	with open("conf.ini") as f:
+		import configparser
+		b = configparser.ConfigParser(allow_no_value=True)
+		b.read("conf.ini")
+		info = b["info"]
+		name = info['name']
+		com = b["compatibility"]
+		distros = [item for item in com["suported_distros"].split(", ")]
+		if dn not in distros and "all" not in distros:
+			os.chdir('../../..')
+			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+			os.rename(file.replace('.aex', ".zip"), file)
+			return (False, "não é compativel")
+		
+		pacotes = [item for item in com["pkgs"].split(", ")]
+		pkgs_dir = os.listdir('../../../../pkgs')
+		sim = all(item in pkgs_dir for item in pacotes)
+		if not pacotes:
+			os.chdir('../../..')
+			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+			os.rename(file.replace('.aex', ".zip"), file)
+			return (False, "falta de dependencias")
+		
+		init = b['init']
+		for inst in [item for item in init["setup_exe"].split(", ")]:
+			try:
+				exec(base64.b64decode(inst))
+			except Exception as e:
+				os.chdir('../../..')
+				shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+				os.rename(file.replace('.aex', ".zip"), file)
+				return (False, f"error: {e}")
+		interpr = init["interpreter"]
+	if interpr == "python3" and type == "<main>" and interpr_esp == "py":
+		hw_instan.memory.append(name, a, sandbox)
+		hw_instan.num -= 2
+	elif interpr == "python2" and type == "<main>" and interpr_esp == "py":
+		a = compile(a_copy, "<string>", mode="exec", dont_inherit=True, optimize=2)
+		hw_instan.memory.append(name, a, sandbox)
+		hw_instan.num -= 2
+	elif type == "<plugin>" and interpr_esp == "py":
+		return carregar_como_plugin(file, name)
+	elif type == "<library>":
+		return carregar_como_library(file, name)
+	elif type == "<custom_driver>" and interpr_esp == "py":
+		DRIVC = {
+		"__builtins__": __builtins__,
+		"IPC": IPC,
+		"ler_IPC": ler_IPC,
+		"os": modulotmp,
+		"sys": sys,
+		"mnt": mnt,
+		"umnt": umnt,
+		"configurar_fs": configurar_fs,
+		"shareata": sharedata,
+		"VED": VED,
+		"LFV": LFV,
+		"PHC": PHC
+		}
+		sim, pid = VED(None, "drivers manager service", "name")
+		if sim:
+			IPC(pid, {"action": "add", "code": a, "interpreter": interpr, "namespace": DRIVC}, -1, "kernel")
+	elif interpr_esp == "outro":
+		c, d = VED(None, "interpreters manager service", "name")
+		if c:
+			IPC(d, {"action": "execute", "interpreter": interpr, "code": a}, -1, "kernel")
+		else:
+			os.chdir('../../..')
+			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+			os.rename(file.replace('.aex', ".zip"), file)
+			return (False, "impossivel encontrar o interpretador")
+	os.chdir('../../..')
+	shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+	os.rename(file.replace('.aex', ".zip"), file)
+	return (True, None)
+
+def exec_aex_app(file):
+	a = exec_aex(file, APPC)
+	return a
+
+def pta(file):
+	dirs = [item for item in file.split('/')]
+	nome = dirs[-1].replace('.py', "")
+	import re
+	with open(file, "r") as f:
+		code = f.read()
+	
+	padrao = r"usepkg\(([^)]+)\)"
+	pacotes = re.findall(padrao, code)
+	for i in range(len(pacotes)):
+		pacotes[i] = pacotes[i].split(", ")[0]
+	string = ""
+	for i, pkg in enumerate(pacotes):
+		i += 1 # indices 1-basied
+		if i < len(pacotes):
+			string += f"{pkg}, "
+		else:
+			string += pkg
+		
+		
+	
+	a = configparser.ConfigParser(allow_no_value=True)
+	a['init'] = {
+	"setup_exe": "",
+	"interpreter": "python3",
+	}
+	a['compatibility'] = {
+	"suported_distros": "all",
+	"pkgs": string
+	}
+	
+	a['info'] = {
+	"name": nome
+	}
+	
+	os.mkdir(f"./{nome}")
+	with open(f"./{nome}/conf.ini", "w") as f:
+		a.write(f)
+	with open(f"./{nome}/exe.py", "w") as f:
+		f.write(code)
+	with open(f"./{nome}/exe.type", "w") as f:
+		f.write("<main>")
+	
+	shutil.make_archive(f"{nome}", "zip", f"./{nome}")
+	os.rename(f'{nome}.zip', f"{nome}.aex")
+	
+class Cores:
+    # Reset
+    RESET = '\033[0m'
+    
+    # Cores básicas do texto (4 bits)
+    PRETO = '\033[30m'
+    VERMELHO = '\033[31m'
+    VERDE = '\033[32m'
+    AMARELO = '\033[33m'
+    AZUL = '\033[34m'
+    MAGENTA = '\033[35m'
+    CIANO = '\033[36m'
+    BRANCO = '\033[37m'
+    
+    # Cores brilhantes
+    CINZA = '\033[90m'
+    VERMELHO_CLARO = '\033[91m'
+    VERDE_CLARO = '\033[92m'
+    AMARELO_CLARO = '\033[93m'
+    AZUL_CLARO = '\033[94m'
+    MAGENTA_CLARO = '\033[95m'
+    CIANO_CLARO = '\033[96m'
+    BRANCO_BRILHANTE = '\033[97m'
+    
+    # Estilos
+    NEGRITO = '\033[1m'
+    ITALICO = '\033[3m'
+    SUBLINHADO = '\033[4m'
+    
+    # Cores personalizadas (8 bits)
+    @staticmethod
+    def laranja(texto):
+        return f'\033[38;5;214m{texto}{Cores.RESET}'
+    
+    @staticmethod
+    def rosa(texto):
+        return f'\033[38;5;213m{texto}{Cores.RESET}'
+    
+    @staticmethod
+    def roxo(texto):
+        return f'\033[38;5;129m{texto}{Cores.RESET}'
+    
+    @staticmethod
+    def cor_personalizada(texto, codigo_cor):
+        return f'\033[38;5;{codigo_cor}m{texto}{Cores.RESET}'
+
+# gdioad(graphic distro input/output adaptation), adaptacao input e print para distros com interface grafica
+
+def gdioad(novo_input, novo_print):
+    """
+    Substitui as funções built-in input() e print() por funções personalizadas.
+    
+    Args:
+        novo_input: Função que substituirá a input() original
+        novo_print: Função que substituirá a print() original
+    """
+    # Salva as funções originais como atributos da função gdioad
+    gdioad.input_original = __builtins__.input
+    gdioad.print_original = __builtins__.print
+    
+    # Sobrescreve as funções built-in
+    __builtins__.input = novo_input
+    __builtins__.print = novo_print
+    
+    # Função para restaurar as funções originais
+    def restaurar():
+        __builtins__.input = gdioad.input_original
+        __builtins__.print = gdioad.print_original
+    
+    gdioad.restaurar = restaurar
+
+class TuplaSegura:
+    def __init__(self, *itens):
+        self._itens = list(itens)
+        self._permissoes = {}  # {indice: {pids_autorizados}}
+        self._modo_kernel = False  # 🆕 Controle de modo kernel
+    
+    def definir_acesso(self, indice, pids_autorizados):
+        """Define quais PIDs podem acessar um item específico"""
+        self._permissoes[indice] = set(pids_autorizados)
+    
+    def ler(self, indice, pid_requisitante):
+        """Lê um item apenas se o PID tiver permissão"""
+        # 🆕 Se está em modo kernel, ignora todas as verificações
+        if self._modo_kernel:
+            return self._itens[indice]
+            
+        if indice in self._permissoes:
+            if pid_requisitante in self._permissoes[indice]:
+                return self._itens[indice]
+            else:
+                return f"PID {pid_requisitante} não tem acesso ao item {indice}"
+        else:
+            return self._itens[indice]  # Item sem restrições
+    
+    def __getitem__(self, chave):
+        # Para uso normal, sem verificação de PID
+        return self._itens[chave]
+    
+    # 🆕 MÉTODOS DE ACESSO KERNEL
+    def _ativar_modo_kernel(self):
+        """Ativa modo de acesso kernel (sem verificações)"""
+        self._modo_kernel = True
+    
+    def _desativar_modo_kernel(self):
+        """Desativa modo de acesso kernel"""
+        self._modo_kernel = False
+    
+    def _acesso_kernel(self, indice):
+        """Acesso direto do kernel - SEM verificações de PID"""
+        return self._itens[indice]
+    
+    # 🆕 Context manager para acesso kernel
+    def __enter__(self):
+        """Para uso com 'with' no kernel"""
+        self._modo_kernel = True
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Sai do modo kernel"""
+        self._modo_kernel = False
+
+
+class sharedata:
+	@staticmethod
+	def set(d_name, value, ypid):
+		global containers
+		if d_name in containers["shareddata"]:
+			return f"ja existe {d_name}"
+		containers["shareddata"][d_name] = TuplaSegura(value, ypid)
+		containers['shareddata'][d_name].definir_acesso(1, {ypid, -1})
+		return "criado com sucesso!"
+		
+		
+	@staticmethod
+	def access(d_name):
+		global containers
+		return containers["shareddata"][d_name][0]
+	
+	@staticmethod
+	def list_dnames():
+		global containers
+		return list(containers['shareddata'].keys())
+	
+	@staticmethod
+	def deldata(d_name, ypid):
+		global containers
+		a = containers["shareddata"][d_name]
+		with a:
+			if a._acesso_kernel(1) != ypid:
+				return False
+		del containers["shareddata"][d_name]
+		return True
+		
+	@staticmethod
+	def updatedata(d_name, new_value, ypid):
+		with containers["shareddata"][d_name]:
+			 a = containers["shareddata"][d_name].ler(1, -1)
+			 if a != ypid:
+			 	return False
+			 else:
+			 	containers["shareddata"][d_name][0] = new_value
+
+import types
+import os
+import shutil
+from pathlib import Path
+
+# Função auxiliar para normalizar caminhos relativos à root
+def _normalizar_caminho(caminho):
+	global root, modulotmp
+	if caminho.startswith("/"):
+		return root + caminho
+	elif caminho.startswith('./') or not caminho.startswith("/") or not caminho.startswith(".."):
+		diretorio = modulotmp.getcwd()
+		caminho = caminho.replace(".", "")
+		return diretorio + caminho
+	elif camimho.startswith("../"):
+		diret = modulotmp.getcwd()
+		diret = diret.split("/")
+		del diret[-1]
+		string = ""
+		for item in diret:
+			string += f"/{item}"
+		string += caminho
+		return string 
+	
+# modulotmp - versão segura do os
+modulotmp = types.ModuleType("modulo")
+
+# Adiciona todas as funções do os exceto system e getpid
+for func in dir(os):
+    if func not in ["system", "getpid"]:
+        attr = getattr(os, func)
+        
+        # Para funções que operam em caminhos de arquivos, criar versões seguras
+        if callable(attr) and any(param in func.lower() for param in ['path', 'file', 'dir', 'mkdir', 'remove', 'rename']):
+            def criar_funcao_segura(original_func, func_name):
+                def funcao_segura(*args, **kwargs):
+                    # Processa argumentos que são caminhos
+                    novos_args = []
+                    for arg in args:
+                        if isinstance(arg, (str, Path)):
+                            novos_args.append(_normalizar_caminho(str(arg)))
+                        else:
+                            novos_args.append(arg)
+                    
+                    # Processa kwargs que são caminhos
+                    novos_kwargs = {}
+                    for key, value in kwargs.items():
+                        if isinstance(value, (str, Path)) and any(path_key in key.lower() for path_key in ['path', 'file', 'dir']):
+                            novos_kwargs[key] = _normalizar_caminho(str(value))
+                        else:
+                            novos_kwargs[key] = value
+                    
+                    return original_func(*novos_args, **novos_kwargs)
+                
+                # Mantém o nome original da função para debugging
+                funcao_segura.__name__ = func_name
+                return funcao_segura
+            
+            attr_seguro = criar_funcao_segura(attr, func)
+            setattr(modulotmp, func, attr_seguro)
+        else:
+            # Para funções que não operam em caminhos, usa diretamente
+            setattr(modulotmp, func, attr)
+
+# Função system personalizada para modulotmp
+def sc(command):
+    import inspect
+    frame_chamador = inspect.currentframe().f_back
+    
+    # Executa código no contexto do chamador
+    frame_chamador.f_globals['variavel_no_chamador'] = "Valor definido pelo módulo"
+    
+    # Executa uma expressão no contexto do chamador
+    archs = ["8", '16', "32", '64']
+    for item in archs:
+        exec(f'ostmp = VED(None, "shell{item}", "name")', frame_chamador.f_globals, frame_chamador.f_locals)
+        if frame_chamador.f_locals["ostmp"][0]:
+            break
+    
+    exec(f'IPC(ostmp, {command}, -1, "os")', frame_chamador.f_globals, frame_chamador.f_locals)
+
+setattr(modulotmp, "system", sc)
+
+# Função getpid personalizada para modulotmp
+def getpidc():
+    '''
+    Retorna o PID do processo Aurox que está chamando a função
+    em vez do PID do processo Python do host
+    '''
+    import inspect
+    
+    # Obtém o frame do chamador
+    frame_chamador = inspect.currentframe().f_back
+    
+    try:
+        # Procura o PID nos frames da pilha de execução
+        for frame_info in inspect.stack():
+            frame = frame_info.frame
+            
+            # Verifica se este frame pertence a um processo Aurox
+            if 'hw_instan' in globals() and hasattr(hw_instan, 'ppn'):
+                # Procura qual PID corresponde a este frame
+                for pid, info in hw_instan.ppn.items():
+                    # Verifica se o frame atual corresponde a este processo
+                    # Comparando o nome do processo com informações do frame
+                    frame_globals = frame.f_globals
+                    frame_locals = frame.f_locals
+                    
+                    # Tenta encontrar correspondência pelo contexto de execução
+                    if ('__name__' in frame_globals and frame_globals['__name__'] in ['__app__', '__distro__', '__shell__', '__aurox__']):
+                        return pid
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+setattr(modulotmp, 'getpid', getpidc)
+
+# modulotmp2 - versão segura do shutil
+modulotmp2 = types.ModuleType("modulo_shutil")
+
+# Adiciona todas as funções do shutil com segurança de caminhos
+for func in dir(shutil):
+    attr = getattr(shutil, func)
+    
+    if callable(attr):
+        def criar_funcao_shutil_segura(original_func, func_name):
+            def funcao_segura(*args, **kwargs):
+                # Processa argumentos que são caminhos
+                novos_args = []
+                for arg in args:
+                    if isinstance(arg, (str, Path)):
+                        novos_args.append(_normalizar_caminho(str(arg)))
+                    else:
+                        novos_args.append(arg)
+                
+                # Processa kwargs que são caminhos
+                novos_kwargs = {}
+                for key, value in kwargs.items():
+                    if isinstance(value, (str, Path)) and any(path_key in key.lower() for path_key in ['path', 'file', 'dir', 'src', 'dst']):
+                        novos_kwargs[key] = _normalizar_caminho(str(value))
+                    else:
+                        novos_kwargs[key] = value
+                
+                return original_func(*novos_args, **novos_kwargs)
+            
+            funcao_segura.__name__ = func_name
+            return funcao_segura
+        
+        attr_seguro = criar_funcao_shutil_segura(attr, func)
+        setattr(modulotmp2, func, attr_seguro)
+    else:
+        setattr(modulotmp2, func, attr)
+
+# open_customizado - versão segura do open built-in
+def open_customizado(file, mode="r", *args, **kwargs):
+    """
+    Versão segura do open que sempre trabalha com caminhos relativos à root
+    
+    Args:
+        file: caminho do arquivo
+        mode: modo de abertura
+        *args, **kwargs: outros parâmetros do open
+    
+    Returns:
+        file object aberto
+    """
+    caminho_seguro = _normalizar_caminho(str(file))
+    return __builtins__.open(caminho_seguro, mode, *args, **kwargs)
+
+
+
+
+		
+b_filt = types.ModuleType('b')
+import builtins
+for com in dir(builtins):
+	if com != "open":
+		b_filt.__dict__[com] = getattr(builtins, com)
 
 
 APPC = {
@@ -2584,23 +3381,32 @@ APPC = {
 "ler_IPC": ler_IPC,
 "limpar_IPC": limpar_IPC,
 "criar_processo_filho": criar_processo_filho,
-"__builtins__":  __builtins__,
+"__builtins__":  b_filt,
+"open": open_customizado,
 "listpkg": listpkg,
 "usepkg": usepkg,
 "checkpkg": checkpkg,
-"os": os,
+"os": modulotmp,
 "time": time,
-"shutil": shutil,
+"shutil": modulotmp2,
 "import2": __import__,
 "random": random,
 'sys_pid': sys_pid,
 "domestico": domestico,
-"LFV": LFV
+"LFV": LFV,
+"keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
+"exec_aex": exec_aex_app,
+"__colors__": Cores,
+"gdioad": gdioad,
+"sharedata": sharedata
 }
+
+
 
 SYSC = {
 '__name__': "__distro__",
-"__builtins__": __builtins__,
+"__builtins__": b_filt,
+"open": open_customizado,
 "mnt": mnt,
 "umnt": umnt,
 "configurar_fs": configurar_fs,
@@ -2622,10 +3428,10 @@ SYSC = {
 "listpkg": listpkg,
 "usepkg": usepkg,
 "checkpkg": checkpkg,
-"os": os,
+"os": modulotmp,
 "sys": sys,
 "time": time,
-"shutil": shutil,
+"shutil": modulotmp2,
 "random": random,
 "import2": __import__,
 "sys_pid": sys_pid,
@@ -2636,7 +3442,12 @@ SYSC = {
 "LFV": LFV,
 "auroxperm": auroxperm,
 "LinuxFs": LinuxFs,
-"VED": VED
+"VED": VED,
+"keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
+"exec_aex": exec_aex,
+"__colors__": Cores,
+"gdioad": gdioad,
+"sharedata": sharedata
 }
 
 class hw_instan_return:
@@ -2653,6 +3464,9 @@ class hw_instan_return:
 
 def exe(comando):
 	comando()
+
+
+
 
 KRNLC = {
 '__name__': "__aurox__",
@@ -2698,7 +3512,54 @@ KRNLC = {
 "ler_temperatura_real": ler_temperatura_real,
 "sys_fs": sys_fs,
 "exe": exe,
-"umnt_op": umnt_op
+"umnt_op": umnt_op,
+"__colors__": Cores
+}
+
+SHC = {
+'__name__': "__shell__",
+"__builtins__": b_filt,
+"open": open_customizado,
+"mnt": mnt,
+"umnt": umnt,
+"configurar_fs": configurar_fs,
+"matar_proc": matar_proc,
+"MCA": MCA,
+"distro": distro,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"pwroff_krnl": pwroff_krnl,
+"debug": debug,
+"criar_processo_filho": criar_processo_filho,
+"CPFS": CPFS,
+"initapp": initapp,
+"reboot": reboot,
+"installpkg": installpkg,
+"delpkg": delpkg,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg,
+"os": os,
+"sys": sys,
+"time": time,
+"shutil": modulotmp2,
+"random": random,
+"import2": __import__,
+"sys_pid": sys_pid,
+"domestico": domestico,
+"addperm": addperm,
+"delperm": delperm,
+"default_perm": default_perm,
+"LFV": LFV,
+"auroxperm": auroxperm,
+"LinuxFs": LinuxFs,
+"VED": VED,
+"keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
+"exec_aex": exec_aex,
+"__colors__": Cores,
+"sharedata": sharedata
 }
 
 class HWIW:
@@ -2718,10 +3579,8 @@ class HWIW:
             return self._hw_instan.processos_parar
         raise AuroxError(f"Acesso restrito a hw_instan.{name}")
 
-
-
-
 containers = {}
+containers['shareddata'] = {}
 
 class hardware:
 	def __init__(self, m):
@@ -2851,13 +3710,606 @@ if {pid} in hw_instan.processos_parar:
 			
 			self.verificacoes += 1
 			time.sleep(1)
-
-
-
-
+			
+			
+	def __getattr__(self, attr):
+		raise AuroxError(f"'{attr}' not found")
+		
+	def __len__(self):
+		return len(self.ppn)
 	
+	def __getitem__(self, pid):
+		if pid in self.ppn:
+			return self.ppn[pid]
+		else:
+			return None
+	
+	def __enter__(self):
+		return self
+	
+	def __exit__(self, exc_type, exc_val, exc_tb):
+		if exc_type:
+			raise AuroxError("error in hardware context: {exc_val}")
+		
+		return False
+	
+	def __bool__(self):
+		return len(self.threads) > 0 and any(t.is_live() for t in self.threads)
+		
+	def __delattr__(self, name):
+		if name in ["ppn", "memory", "mem_prot", "processos_parar", "threads"]:
+			return None
+		super().__delattr__(name)
+		return None
+
+knic_exec = True
+
+def KNIC():
+	global containers, knic_exec, debug
+	while knic_exec:
+		time.sleep(0.5)
+		kernel = __import__("kernel")
+		for chave in containers:
+			for item in containers[chave]:
+				if item == kernel:
+					matar_proc(chave, False)
+					if debug: print(f"[SECURITY] pid {i} killed: cannot use 'import kernel'.")
+
+
+def start_up_msg(type, msg, extra=()):
+	os.system("clear" if os.name != "nt" else "cls")
+	if type == "<failed>":
+		print(Cores.laranja("[boot failed]"))
+		print(Cores.laranja(msg))
+		if extra[1]:
+			sys.exit(extra[2])
+		return None
+	elif type == "<ini>":
+		print(Cores.laranja("[boot.ini]"))
+		print(Cores.laranja(msg))
+		if extra[1]:
+			sys.exit(extra[2])
+		return None
+	elif type == "<c>":
+		print(Cores.laranja("[continue?]"))
+		print(Cores.laranja(msg))
+		return input(extra[0]).lower()
+		
+bootcfg = {"not_init": ["init.py"], "sys_dir": "./", "init": ["default"], "suported_hostsys": ["posix", "nt"], "perm_padrao:": perm_padrao, "force_debug": False}
+
+import struct
+import tempfile
+from pathlib import Path
+
+def det_arq(arquivo, type='auto'):
+    """
+    Detecta se é link para busybox ou arquivo ELF.
+    Para ELF, compila para Python e retorna o código.
+    Retorna código Python compatível com sistema de processos Aurox.
+    """
+    
+    # Verifica link simbólico para busybox
+    if os.path.islink(arquivo):
+        target = os.path.realpath(arquivo)
+        if 'busybox' in os.path.basename(target):
+            # Código Python equivalente para busybox
+            busybox_code = f'''
+# Código equivalente para busybox: {arquivo}
+# Link para: {target}
+
+import subprocess
+import sys
+import os
+
+applet_name = os.path.basename("{arquivo}")
+target_path = "{target}"
+
+def execute_busybox(*args):
+    """Executa o comando busybox equivalente"""
+    cmd = [target_path, applet_name] + list(args)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(result.stdout)
+        else:
+            print(result.stderr, file=sys.stderr)
+    except Exception as e:
+        print(f"Erro ao executar {{applet_name}}: {{e}}")
+
+# Execução principal
 if __name__ == "__main__":
-	if os.path.exists("./system"):
+    args = sys.argv[1:]
+    execute_busybox(*args)
+'''
+            return busybox_code
+    
+    # Analisa arquivo ELF
+    try:
+        with open(arquivo, 'rb') as f:
+            magic = f.read(4)
+            if magic != b'\x7fELF':
+                return None
+            
+            # Detecta bits (32 ou 64)
+            ei_class = struct.unpack('B', f.read(1))[0]
+            
+            if type == 'auto':
+                bits = 32 if ei_class == 1 else 64 if ei_class == 2 else None
+            else:
+                bits = int(type)
+            
+            if bits not in [32, 64]:
+                return None
+            
+            # Gera código Python compatível com Aurox
+            elf_code = f'''
+# Código Python equivalente para ELF {bits}-bits: {arquivo}
+
+import subprocess
+import sys
+
+def execute_elf(*args):
+    """Executa o binário ELF original"""
+    cmd = ["{arquivo}"] + list(args)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(result.stdout)
+        else:
+            print(result.stderr, file=sys.stderr)
+    except Exception as e:
+        print(f"Erro ao executar {{arquivo}}: {{e}}")
+
+# Execução principal
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    execute_elf(*args)
+'''
+            return elf_code
+            
+    except Exception as e:
+        # Código de fallback simples
+        fallback_code = f'''
+# Wrapper de fallback para: {arquivo}
+# Erro na análise: {e}
+
+import subprocess
+import sys
+
+def execute_fallback(*args):
+    """Execução genérica"""
+    try:
+        cmd = ["{arquivo}"] + list(args)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(result.stdout)
+        else:
+            print(result.stderr, file=sys.stderr)
+    except Exception as e:
+        print(f"Erro ao executar {{arquivo}}: {{e}}")
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    execute_fallback(*args)
+'''
+        return fallback_code
+
+
+
+
+# Cria o conteúdo do arquivo Cython
+cython_code = '''
+from cython.cimports.cpython.object import PyObject_CallFunctionObjArgs
+import types
+from cpython cimport PyObject
+
+# Estrutura para representar uma função C
+cdef struct CFunction:
+    char* name
+    void* function_ptr
+    int flags
+    char* docstring
+
+# Estrutura para representar uma variável C  
+cdef struct CVariable:
+    char* name
+    void* variable_ptr
+    int type_code
+
+@cython.cfunc
+def cm_to_pym(c_module_def: cython.pointer(PyModuleDef)) -> object:
+    """
+    Converte um módulo C em um módulo Python de forma completa.
+    """
+    # Obtém o nome do módulo C
+    cdef PyModuleDef* module_def = <PyModuleDef*>c_module_def
+    cdef char* module_name = module_def.m_name if module_def.m_name else b"unknown_c_module"
+    
+    # Cria novo módulo Python
+    py_module: object = PyModule_New(module_name)
+    
+    if py_module is None:
+        raise RuntimeError(f"Falha ao criar módulo Python: {module_name}")
+    
+    # Adiciona metadados básicos
+    PyModule_AddObject(py_module, "__name__", module_name.decode('utf-8'))
+    PyModule_AddObject(py_module, "__package__", "")
+    PyModule_AddObject(py_module, "__doc__", f"Módulo convertido de {module_name.decode('utf-8')}")
+    
+    # Processa métodos do módulo C
+    if module_def.m_methods != NULL:
+        _add_c_methods_to_module(py_module, module_def.m_methods)
+    
+    # Processa membros do módulo C (variáveis, constantes)
+    if module_def.m_members != NULL:
+        _add_c_members_to_module(py_module, module_def.m_members)
+    
+    # Processa tipos definidos no módulo C
+    if module_def.m_slots != NULL:
+        _add_c_types_to_module(py_module, module_def.m_slots)
+    
+    return py_module
+
+@cython.cfunc
+cdef _add_c_methods_to_module(py_module: object, methods: cython.pointer(PyMethodDef)) -> void:
+    """Adiciona métodos C ao módulo Python"""
+    cdef PyMethodDef* current_method = methods
+    
+    while current_method.ml_name != NULL:
+        method_name = current_method.ml_name.decode('utf-8')
+        
+        # Cria uma função Python a partir do método C
+        c_function = _create_python_function_from_c_method(current_method)
+        
+        if c_function is not None:
+            PyModule_AddObject(py_module, method_name, c_function)
+        
+        current_method += 1
+
+@cython.cfunc  
+cdef _add_c_members_to_module(py_module: object, members: cython.pointer) -> void:
+    """Adiciona membros C (variáveis, constantes) ao módulo Python"""
+    cdef int i = 0
+
+@cython.cfunc
+cdef _add_c_types_to_module(py_module: object, slots: cython.pointer) -> void:
+    """Adiciona tipos C ao módulo Python"""
+    pass
+
+@cython.cfunc
+cdef _create_python_function_from_c_method(method_def: cython.pointer(PyMethodDef)) -> object:
+    """Cria uma função Python a partir de um método C"""
+    cdef PyMethodDef* mdef = <PyMethodDef*>method_def
+    
+    # Cria uma função usando a API C do Python
+    c_function = PyCFunction_New(mdef, NULL)
+    
+    if c_function is None:
+        print(f"Aviso: Não foi possível criar função para {mdef.ml_name}")
+        return None
+    
+    return c_function
+
+# Implementação alternativa mais robusta
+@cython.cfunc
+def cm_to_pym_complete(c_module_addr: cython.size_t) -> object:
+    """
+    Conversão completa de módulo C para Python usando endereço de memória.
+    """
+    cdef PyModuleDef* c_module = <PyModuleDef*>c_module_addr
+    
+    if c_module == NULL:
+        raise ValueError("Ponteiro do módulo C é NULL")
+    
+    # Extrai informações do módulo C
+    module_name = c_module.m_name.decode('utf-8') if c_module.m_name else "c_module"
+    module_doc = c_module.m_doc.decode('utf-8') if c_module.m_doc else f"Converted from C module {module_name}"
+    
+    # Cria módulo Python
+    py_module = types.ModuleType(module_name, module_doc)
+    
+    # Adiciona atributos de sistema
+    py_module.__file__ = f"<converted from C module {module_name}>"
+    py_module.__builtins__ = __builtins__
+    
+    py_module.__c_module_converted__ = True
+    py_module.__original_c_module_name__ = module_name
+    
+    return py_module
+
+# NOVA FUNÇÃO: Aceita caminho de arquivo .c em vez de ponteiro
+def create_python_module_from_c_file(c_file_path: str) -> types.ModuleType:
+    """
+    Cria um módulo Python a partir de um arquivo .c
+    
+    Args:
+        c_file_path: Caminho para o arquivo .c
+        
+    Returns:
+        Módulo Python funcional
+    """
+    if not os.path.exists(c_file_path):
+        raise FileNotFoundError(f"Arquivo C não encontrado: {c_file_path}")
+    
+    # Lê o conteúdo do arquivo C
+    with open(c_file_path, 'r', encoding='utf-8') as f:
+        c_code = f.read()
+    
+    # Extrai nome do módulo do nome do arquivo
+    module_name = os.path.basename(c_file_path).replace('.c', '')
+    
+    # Cria módulo Python vazio
+    py_module = types.ModuleType(module_name)
+    py_module.__file__ = c_file_path
+    py_module.__c_source_code__ = c_code  # Adiciona o código fonte como atributo
+    py_module.__original_c_file__ = c_file_path
+    
+    # Aqui você pode adicionar mais processamento do código C
+    # como extrair funções, variáveis, etc.
+    
+    return py_module
+
+# Função de alto nível para uso em Python puro (mantida para compatibilidade)
+def create_python_module_from_c(c_module_pointer: int) -> types.ModuleType:
+    """
+    Cria um módulo Python a partir de um módulo C (versão com ponteiro).
+    """
+    if not isinstance(c_module_pointer, int):
+        raise TypeError("c_module_pointer deve ser um inteiro")
+    
+    return cm_to_pym_complete(cython.cast(cython.size_t, c_module_pointer))
+'''
+
+# Cria o arquivo .pyx automaticamente
+def criar_arquivo_cython():
+    with open('cython_module.pyx', 'w', encoding='utf-8') as f:
+        f.write(cython_code)
+    print("Arquivo cython_module.pyx criado automaticamente")
+
+# Tenta importar o módulo Cython
+c_disponible = False
+cython_module = None
+
+if __name__ == "__main__":
+	try:
+		import cython_module
+		c_disponible = True
+		print("Módulo Cython carregado com sucesso")
+	except ModuleNotFoundError:
+		print("Módulo Cython não encontrado, criando arquivo...")
+		criar_arquivo_cython()
+    
+    # Tenta compilar e importar
+	try:
+		print("Arquivo .pyx criado, mas precisa ser compilado")
+		c_disponible = False
+	except Exception as e:
+		print(f"Falha ao compilar módulo Cython: {e}")
+		c_disponible = False
+	except Exception as e:
+		print(f"Erro ao carregar módulo Cython: {e}")
+		c_disponible = False
+
+# Função fallback em Python puro
+if not c_disponible:
+    def create_python_module_from_c(c_module_pointer):
+        if debug: print("Usando versão Python puro (Cython não disponível)")
+        class MockModule:
+            def __init__(self):
+                self.__name__ = "mock_c_module"
+                self.__c_module_converted__ = False
+        return MockModule()
+    
+    # Também cria fallback para a nova função de arquivo
+    def create_python_module_from_c_file(c_file_path: str) -> types.ModuleType:
+        print(f"Usando versão Python puro para arquivo: {c_file_path}")
+        if not os.path.exists(c_file_path):
+            raise FileNotFoundError(f"Arquivo não encontrado: {c_file_path}")
+        
+        module_name = os.path.basename(c_file_path).replace('.c', '')
+        py_module = types.ModuleType(module_name)
+        py_module.__file__ = c_file_path
+        py_module.__c_module_converted__ = False
+        py_module.__using_fallback__ = True
+        
+        return py_module
+
+
+
+
+if not os.path.exists("./boot.ini") and v < 2 and __name__ == "__main__" and not cmd_atived:
+	print("a distro não é bootável :(")
+	sys.exit(1)
+v += 1
+try:
+	import gc
+	config = configparser.ConfigParser(allow_no_value=True)
+	config.read("./boot.ini")
+	bootcfgs = config["boot"]
+	com = config['compatibility']
+	bootcfg["not_init"] = bootcfgs["not_init"]
+	bootcfg["suported_hostsys"] = [item for item in com["s_hostsys"].split(", ")]
+	gc_actived = com.getboolean("gc")
+	if gc_actived:
+		gc.enable()
+	else:
+		gc.disable()
+
+	if os.name not in bootcfg["suported_hostsys"]:
+		res = start_up_msg("<c>", f"The distro does not support the host operating system({'linux' if os.name == 'posix' else 'macOS' if os.name == 'darwin' else 'windows' if os.name == 'nt' else 'outro'}), continue?", extra=("(S/n):", None, None))
+		if res == "s":
+			pass
+		else:
+			sys.exit(1)
+	bootcfg["init"] = [item for item in bootcfgs["init"].split(", ")]
+	for inst in bootcfg["init"]:
+		if inst != "default":
+			exec(base64.b64decode(inst))
+
+	perm_padrao = eval(com["perms_default"]) # transforma em dict valido
+	bootcfg["sys_dir"] = bootcfgs["sysdir"]
+	bootcfg["force_debug"] = bootcfgs.getboolean("force_debug")
+	if bootcfg["force_debug"]:
+		debug = True
+	sh_arch = str(bootcfgs["sh_arch"])
+	validos = ["8", "16", "32", "64"]
+	libp = int(bootcfgs["libp"])
+	cb = com.getboolean("compile_binarys")
+	if sh_arch not in validos:
+		if __name__ == "__main__":
+			start_up_msg("<ini>", "invalid shell architeture", (None, True, 1)) 
+except Exception as e:
+	if __name__ == "__main__":
+		start_up_msg("<ini>", f"error in boot.ini: {e}", extra=(None, True, 1))
+
+if cmd_atived:
+	tmp_m = []
+	while True:
+		a =input(f"{'root' if os.geteuid() == 0 else os.getlogin()} & {os.getpid()} {os.getcwd()}>")
+		b = a.split(" ")
+		if b[0] == "hostsh":
+			string = ""
+			com = b[1:]
+			for item in com:
+				string += f"{item} "
+			os.system(string)
+		elif b[0] == "distsh":
+			com = b[1:]
+			string = ""
+			for item in com:
+				string += f"{item} "
+			shell = __import__("shell_module_version")
+			shell.execute(string)
+		elif b[0] == "exit":
+			sys.exit(0)
+		elif b[0] == "boot":
+			break
+		elif b[0] == "distro":
+			if b[1] == "--compile":
+				pta(b[2])
+			elif b[1] == "--delete":
+				shutil.rmtree("system")
+				shutil.rmtree("mnt")
+				shutil.rmtree("pkg")
+				os.remove("boot.ini")
+			elif b[1] == '--edit_boot_ini':
+				os.system("nano boot.ini")
+			elif b[1] == "--add_shell":
+				sh = b[2]
+				with open("./system/etc/shells.txt", "a") as f:
+					f.write(f"\n{sh}")
+			elif b[1] == "--set_shell":
+				sh = b[2]
+				with open('./system/etc/shell.txt', "w") as f:
+					f.write(sh)
+
+		elif b[0] == "addenv":
+			if b[1] == "--copysys":
+				exec(f"{b[2]} = SYSC.copy()")
+			elif b[1] == "--copyapp":
+				exec(f"{b[2]} = APPC.copy()")
+			elif b[1] == "--copysh":
+				exec(f"{b[2]} = SHC.copy()")
+			else:
+				exec(f"{b[1]} = {{}}")
+		elif b[0] == "env":
+			if b[1] == '--add':
+				nav = b[3].split("=")
+				exec(f"{b[2]}['{nav[0]}'] = {nav[1]}")
+			elif b[1] == '--del':
+				exec(f"del {b[2]}")
+			elif b[1] == "--mod":
+				if b[2] == "sys":
+					b[2] = "SYSC"
+				elif b[2] == "app":
+					b[2] = "APPC"
+				exec(f"{b[2]} = {b[3]}")
+			elif b[1] == "--create_hw_instan":
+				hw_instan == tmp_m
+		elif b[0] == "tmp_m":
+			if b[1] == "--add":
+				amb = b[2].replace("amb=", "")
+				name = b[3].replace('name=', '')
+				code = b[4].replace("code=", "")
+				tmp_m.append((code, name, amb))
+			elif b[1] == "--del":
+				index = b[2]
+				del tmp_m[index]
+			elif b[1] == "--reset":
+				tmp_m = [] 
+		elif b[0] == "def":
+			nome = b[1:]
+			string = ""
+			for item in nome:
+				string += f"{item} "
+			codigo = ""
+			while True:
+				c = input("... ")
+				if c == "exit":
+					break
+				else:
+					codigo += f"	{c}\n"
+			exec(f"def {string}\n{codigo}")
+		elif b[0] == "for":
+			pars = b[1:]
+			codigo = ""
+			string = ""
+			for item in pars:
+				string += f"{item} "
+			while True:
+				c = input("... ")
+				if c == "exit":
+					break
+				else:
+					codigo += f"	{c}\n"
+			exec(f"for {string}\n{codigo}")
+		elif b[0] == "with":
+			pars = b[1:]
+			codigo = ""
+			string = ""
+			for item in pars:
+				string += f"{item} "
+			while True:
+				c = input("... ")
+				if c == "exit":
+					break
+				else:
+					codigo += f"	{c}\n"
+			exec(f"with {string}\n{codigo}")
+		else:
+			try:
+				exec(a)
+			except Exception as e:
+				print(Cores.laranja(f"⚠️cmd exc: {e}"))
+try:
+	desab_io = com.getboolean("disable_ioput")
+	if desab_io:
+		# atencao: a distro pode reescrever o print e input depois usando gdioad
+		def print(x):
+			pass
+		def input(x):
+			pass
+except Exception as e:
+	if __name__ == "__main__":
+		start_up_msg("<ini>", "error in disable_ioput(boot.ini)", extra=(None, True, 1))
+
+def msg(msg, status, rem):
+	cor = Cores.VERDE if status == 0 else Cores.VERMELHO 
+	t = f"[ {cor} {time.time()} {Cores.RESET} ]"
+	texto = f"{t} {rem}: {msg}"
+	print(texto)
+
+def load_lib(lib):
+	if lib.endswith('.c'):
+		return create_python_module_from_c(lib)
+	elif lib.endswith(".so") or lib.endswith(".dll"):
+		return ctypes.CDLL(lib)
+	else:
+		raise DistroError("invalid library")
+
+if __name__ == "__main__" and "default" in bootcfg["init"]:
+	tmp_m = []
+	if os.path.exists(f"./system"):
 		pass
 		if debug: print("sistema existe")
 	else:
@@ -2871,12 +4323,215 @@ if __name__ == "__main__":
 		except Exception as e:
 			print(f"erro: {e}")
 			quit()
+	dlib = "lib/" if os.path.exists("./system/lib") else ""
+	if libp == 32:
+		for lib in os.listdir(f"./system/{dlib}lib32"):
+			try:
+				caminho = Path(f"./system/{dlib}lib32/{lib}")
+				modulo = load_lib(caminho)
+				APPC[lib.replace(".c", "")] = modulo
+				SYSC[lib.replace('.c', "")] = modulo
+				SHC[lib.replace(".c", "")] = modulo
+				msg(f"started module {caminho}", 0, "kernel")
+			except Exception as e:
+				msg(f"started module {caminho}", 1, "kernel")
+		for lib in os.listdir(f"./system/{dlib}lib64"):
+			try:
+				caminho = Path(f"./system/{dlib}lib64/{lib}")
+				modulo = load_lib(caminho)
+				APPC[lib.replace(".c", "")] = modulo
+				SYSC[lib.replace('.c', "")] = modulo
+				SHC[lib.replace(".c", "")] = modulo
+				msg(f"started module {caminho}", 0, "kernel")
+			except Exception as e:
+				msg(f"started module {caminho}", 1, "kernel")
+	elif libp == 64:
+		for lib in os.listdir(f"./system/{dlib}lib64"):
+			try:
+				caminho = Path(f"./system/{dlib}lib64/{lib}")
+				modulo = load_lib(caminho)
+				APPC[lib.replace(".c", "")] = modulo
+				SYSC[lib.replace('.c', "")] = modulo
+				SHC[lib.replace(".c", "")] = modulo
+				msg(f"started module {caminho}", 0, "kernel")
+			except Exception as e:
+				msg(f"started module {caminho}", 1, "kernel")
+		for lib in os.listdir(f"./system/{dlib}lib32"):
+			try:
+				caminho = Path(f"./system/{dlib}lib32/{lib}")
+				modulo = load_lib(caminho)
+				APPC[lib.replace(".c", "")] = modulo
+				SYSC[lib.replace('.c', "")] = modulo
+				SHC[lib.replace(".c", "")] = modulo
+				msg(f"started module {caminho}", 0, "kernel")
+			except Exception as e:
+				msg(f"started module {caminho}", 1, "kernel")
 	
-	tmp_m = []
+	os.chdir("./system/etc")
+	with open("shells.txt", "r") as f:
+		shells = f.readlines()
+	with open("shell.txt", "r") as f:
+		shd = f.read()
+		if shd not in shells:
+			start_up_msg("<failed>", "shell not in shells.txt", extra=(None, True, 1))
+	os.chdir("systemd")
+	try:
+		with open("systemd.py", "r") as f:
+			systemd = f.read()
+		tmp_m.append((systemd, "systemd", globals()))
+		msg("started systemd", 0, "systemd")
+	except Exception:
+		msg(f"started systemd", 1, "systemd")
+	automount = list(filter(lambda x: x.endswith(".mnt"), os.listdir()))
+	for file in automount:
+		try:
+			config.read(file)
+			cond = config["conf"]["cond"]
+			nomefs = config["conf"]["fsname"]
+			fs = config["conf"]["fs"]
+			mount = config["conf"]["mount_script"]
+			intervalo = config["conf"]["wait"]
+			codigo_automount = f"""while True:
+	if {cond}:
+		mnt('{fs}', '{nomefs}')
+		{mount}
+	time.sleep({intervalo})"""
+			tmp_m.append(codigo_automount, f"systemd {file.replace('.mnt', '')}", globals())
+			msg(f"started systemd {file}", 0, "systemd") 
+		except Exception:
+			msg(f"started systemd {file}", 1, "systemd")
+	autoumount = list(filter(lambda x: x.endswith(".umnt"), os.listdir()))
+	for file in automount:
+		try:
+			config.read(file)
+			cond = config["conf"]["cond"]
+			nomefs = config["conf"]["fsname"]
+			intervalo = config["conf"]["wait"]
+			codigo_automount = f"""while True:
+	if {cond}:
+		umnt('{nomefs}')
+	time.sleep({intervalo})"""
+			tmp_m.append(codigo_automount, f"systemd {file.replace('.umnt', '')}", globals())
+			msg(f"started systemd {file}", 0, "systemd") 
+		except Exception:
+			msg(f"started systemd {file}", 1, "systemd") 
+	os.chdir('..')
+	os.chdir('..')
+	os.chdir("framework")
+	for pkg in os.listdir():
+		if pkg.endswith(".pkg"):
+			os.rename(pkg, pkg.replace(".pkg", ".py"))
+			pacote = __import__(pkg.replace(".pkg", ""))
+			os.rename(pkg.replace(".pkg", '.py'), pkg)
+			namespaces = pacote.ambs
+			if "sys" in namespaces:
+				SYSC[pkg.replace(".pkg", "")] = pacote
+			if "app" in namespaces:
+				APPC[pkg.replace(".pkg", "")] = pacote
+			if "shell" in namespaces:
+				SHC[pkg.replace(".pkg", "")] = pacote
+			msg(f"imported {pkg}", 0, "framework")
+		elif pkg.endswith(".apkg"):
+			import zipfile
+			with zipfile.ZipFile(pkg) as zip:
+				zip.extractall(f"./{pkg.replace('.apkg', '')}")
+			pasta = pkg.replace(".apkg", "")
+			os.chdir(pasta)
+			confs = __import_('conf')
+			ambs = confs.ambs
+			arch = confs.architeture
+			type_add = conf.type_add_class
+			mods = []
+			for arquivo in os.listdir():
+				if arquivo != "conf.py" and arquivo.endswith(".py"):
+					a = __import__(arquivo.replace(".py", ""))
+					mods.append((a, arquivo.replace(".py", "")))
+			with open("self", "r") as f:
+				selfs = f.readlines()
+			classe = """class tmp:
+	def __init__(self):
+
+"""
+			for self in selfs:
+				n, v = self.split("=")
+				classe += f"""		self.{n} = {v}
+
+"""
+			for mod in mods:
+				classe += f"""		self.{mod[1]} = mod[0]
+			os.chdir
+
+"""
+		os.chdir("lib")
+		modulos = []
+		for i, lib in enumerate(os.listdir()):
+			try:
+				caminho = Path(lib)
+				modulo = create_python_module_from_c_file(caminho)
+				nome = lib.replace(".c", "")
+				classe += f"	self.{nome} = modulos[{i}]"
+			except Exception as e:
+				pass
+		os.chdir('funcs/static')
+		for func in os.listdir():
+			func_copy_1 = func.replace(".py", "")
+			modulo = __import__(func_copy_1)
+			a = getattr(modulo, "main")
+			nome_func = modulo.name
+			import inspect
+			codigo = inspect.getsource(a)
+			codigo_sep = codigo.split("\n")
+			string = ""
+			for linha in codigo_sep:
+				if linha.startswith("def"):
+					string += f"	@staticmethod\n	{nome_func}\n"
+				else:
+					string += f"		{linha}\n"
+			classe += string
+		
+		
+		
+		os.chdir('../regular')
+		for func in os.listdir():
+			func_copy_1 = func.replace(".py", "")
+			modulo = __import__(func_copy_1)
+			a = getattr(modulo, "main")
+			import inspect
+			codigo = inspect.getsource(a)
+			codigo_sep = codigo.split("\n")
+			string = ""
+			for linha in codigo_sep:
+				if linha.startswith("def"):
+					string += f"	{linha}\n"
+				else:
+					string += f"		{linha}\n"
+			classe += string	
+		os.chdir("..")
+		os.chdir("..")
+		exec(classe)
+		if type_add == "<instance>":
+			if "sys" in namespaces:
+				SYSC[pkg.replace(".apkg", "")] = tmp()
+			if "app" in namespaces:
+				APPC[pkg.replace(".apkg", "")] = tmp()
+			if "shell" in namespaces:
+				SHC[pkg.replace(".apkg", "")] = tmp()
+		elif type_add == "<class>":
+			if "sys" in namespaces:
+				SYSC[pkg.replace(".apkg", "")] = tmp
+			if "app" in namespaces:
+				APPC[pkg.replace(".apkg", "")] = tmp
+			if "shell" in namespaces:
+				SHC[pkg.replace(".apkg", "")] = tmp
+			os.chdir('..') # sai da pasta temporaria
+			shutil.rmtree(pasta)
+			msg("imported {pkg}", 0, "framework")
+	os.chdir("..")
+	os.chdir('..')
 	tmp_m.append((phc_service, "PHC Kernel Service", KRNLC))
 	x = """while True:
 	time.sleep(0.5)
-	VSP"""
+	VSP()"""
 
 	tmp_m.append((x, "VSP Kernel Service", KRNLC))
 	
@@ -2943,27 +4598,37 @@ while True:
 							umnt(fs)"""
 	tmp_m.append((w, 'OPD Kernel Service', KRNLC))
 	
+	with open("./system/shell.py" if shd == "default" else shd, "r") as f:
+		shell = f.read()
+	
+	if "ler_IPC(" not in shell:
+		start_up_msg("<failed>", "shell don't work", (None, True, 1))
+	
+	tmp_m.append((shell, f"shell{sh_arch}", SHC))
+	msg(f"started shell{sh_arch}", 0, "kernel")
+	
 	# tmp
-	tmpd = os.getcwd() + "/system/tmp"
+	tmpd = os.getcwd() + f"./system/tmp"
 	os.environ['TMP'] = tmpd
 	os.environ['TMPDIR'] = tmpd
 	os.environ['TEMP'] = tmpd
+	msg("tmp dir configured", 0, "tmp")
 	
 	# listdirs
 	root_ = os.listdir()
-	system_code_ = os.listdir("./system/code")
+	system_code_ = os.listdir(f"./system/code")
 	if debug: print(f"📁 {len(system_code_)} codigos do sistema foram encontrados")
-	if "./system/modules" not in sys.path:
-		sys.path.insert(0, "./system/modules")
-	if "./pkg" not in sys.path:
-		sys.path.insert(0, "./pkg")
+	if f"./system/modules" not in sys.path:
+		sys.path.insert(0, f"./system/modules")
+	if f"./pkg" not in sys.path:
+		sys.path.insert(0, f"./pkg")
 	
 	erro_no_tmp_m = 0
 	existe_init = False
-	if os.path.exists("system/code/init.py") and os.path.isfile("system/code/init.py"):
+	if os.path.exists(f"./system/code/init.py") and os.path.isfile(f"./system/code/init.py"):
 		if debug: print("📖 lendo init.py...")
 		existe_init = True
-		with open("system/code/init.py", "r") as initfile:
+		with open(f"./system/code/init.py", "r") as initfile:
 			try:
 				try:
 					tmp_m.append((initfile.read(), "init", SYSC))
@@ -2976,31 +4641,38 @@ while True:
 			except Exception as e:
 				erro_no_tmp_m += 1
 				if debug: print(f" ⚠️ falha ao abrir init.py: {e}")
+				msg("read init.py", 1, "init.py")
 				raise AuroxError(f"erro ao abrir init.py: {e}")
 	else:
 		for i, arquivos in enumerate(system_code_):
-			os.chdir("./system/code")
+			os.chdir(f"./system/code")
 			if arquivos.endswith(".py"):
 				pass
 			else:
-				continue
+				if cb:
+					codigo = det_arq(arquivo)
+					tmp_m.append((codigo, f"sys service {i}", SYSC))
+				continue 
 			if debug: print(f"📖lendo arquivo {arquivos}({i})")
 			with open(arquivos, "r") as code:
 				try:
 					tmp_m.append((code.read(), f"sys service {i}", SYSC))
 					if debug: print(f" ✅️ {arquivos} adicionado ao tmp_m com sucesso(numero execucao {i})")
+					msg(f"read {arquivos}", 0, "kernel")
 				except Exception as e:
 					if debug: print(f" ⚠️ falha ao adicionar {arquivos}({i}) ao tmp_m: {e}")
+					msg(f"read {arquivos}", 1, "kernel")
 					erro_no_tmp_m += 1
 			os.chdir("../..")
 	os.chdir("system")
-	os.system("chmod +x ./shell")
-	if debug: print("shell adicionado 'x' na permissao")
-	os.system("echo './shell' | tee -a /etc/shells")
-	if debug: print("shell usando")
 	if debug: print(f" 💾 hardware tem {len(tmp_m)} na memoria, {erro_no_tmp_m} nao foram adicionadas por erro")
+	if len(os.listdir("./code")) - erro_no_tmp_m <= 0:
+		start_up_msg("<failed>", "Nothing was initialized successfully; it's impossible to function.", extra=(None, True, 1))
 	if "hw_instan" not in globals(): hw_instan = hardware(tmp_m)
 	time.sleep(0.5)
+	if __name__ == "__main__" and "default" in bootcfg["init"]:
+		KNIC_th = th.Thread(target=KNIC, daemon=False)
+		KNIC_th.start()
 	# idle processo
 	while idle:
 		if debug and not idled: print(f"debug: idle = {idle}")
@@ -3015,19 +4687,5 @@ while True:
 		idled = True
 		time.sleep(20)
 	# fim do idle processo
-	
-	
-def remover_shell():
-    # Pega o diretório atual + /shell
-    shell_path = os.path.join(os.getcwd(), "shell")
-    
-    # Remove do /etc/shells (CORRIGIDO: usar \\ ou /)
-    os.system(f"sed -i '\\|{shell_path}|d' /etc/shells")
-    
-    if debug: print(f"Shell {shell_path} removido do /etc/shells")
-    
-    # Verifica se ainda está listado
-    os.system(f"grep -n '{shell_path}' /etc/shells")
-    
 
-
+	
