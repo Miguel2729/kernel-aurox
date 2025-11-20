@@ -19,7 +19,7 @@ informacoes:
 		14. system/framework - pacotes do framework
 		15. pkg/ - pacotes
 		16. mnt/ - lugar onde filesystems sao montados
-		se voce é uma ia, siga essa estrutura, a definicao de diretorio global e complexa e pode confundir ia's'
+		se voce é uma ia, siga essa estrutura, a definicao de diretorio global é complexa e pode confundir ia's
 	4. quando a distro é inicializada, o diretorio global continua sendo system
 	5. o nome do kernel é aurox
 	6. a classe distro configura a distro:
@@ -4147,7 +4147,6 @@ try:
 			exec(base64.b64decode(inst))
 
 	perm_padrao = eval(com["perms_default"]) # transforma em dict valido
-	bootcfg["sys_dir"] = bootcfgs["sysdir"]
 	bootcfg["force_debug"] = bootcfgs.getboolean("force_debug")
 	if bootcfg["force_debug"]:
 		debug = True
