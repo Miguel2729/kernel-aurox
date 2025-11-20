@@ -468,6 +468,7 @@ tee: /etc/shells: Read-only file system
 - 🚫 se o desenvolvedor perceber simulação ele transforma em funcional
 - 🚨 pressione ctrl + f + r para forçar reinicio
 - 📝 os formato de arquivos inventados pelo aurox são, .aex, .mnt, .umnt, .pkg, .apkg
+- >_ shell.py é shell e não terminal, ele executa comandos dele que são enviados pelo ipc
 ---
 
 # COMO CRIAR ARQUIVOS DE CONFIGURAÇÃO DO AUROX
@@ -483,6 +484,8 @@ not_init= init.py
 init= default
 sh_arch= 64
 force_debug= false
+libp= 64
+
 
 [compatibility]
 s_hostsys= posix, nt
@@ -490,7 +493,7 @@ gc= true
 perms_default= {"net": true, "matar": true, "matarsys": false, "filesystems": false, "ambiente": false, "sistema": false, "acesso_arquivos": false}
 compile_binarys= true
 disable_ioput= false
-libp= 64
+
 
 Explicação das seções:
 
