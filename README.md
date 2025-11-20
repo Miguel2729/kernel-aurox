@@ -10,32 +10,36 @@ Ele é **educacional**(educacional se o professor tiver cuidado porque o aurox �
 Cada distribuição Aurox deve seguir esta estrutura:
 
 ```
-sua_distribuicao/
-├── system/
-│   ├── code/              # Códigos do sistema (obrigatório)
-│   │   ├── init.py        # Script de inicialização (opcional)
-│   │   └── *.py           # Outros serviços e daemons
-│   ├── modules/           # Módulos Python personalizados
-│   ├── tmp/               # Diretório temporário do sistema
-│   ├── apps/              # Aplicativos do sistema
-│   └── shell              # Shell executável (opcional - script sh sem extensão)
-├── mnt/                   # Ponto de montagem para filesystems
-├── pkg/                   # pacotes instalados
-└── kernel.py              # Kernel principal (obrigatório)
+.
+├── system
+│   ├── code
+│   │   ├── init.py # (opcional) inicia a distro
+│   │   └── *.py # outros serviços e deamons da distro
+│   ├── modules # modulos da distro
+│   ├── tmp # arquivos temporarios
+│   ├── apps #(opcional) Aplicativos 
+│   ├── lib32 # bibliotecas 32 bits, módulos .c, .so, .dll
+│   ├── lib64 # bibliotecas 64 bits módulos .c, .so, .dll
+│   ├── lib  # (opcional) se você quiser deixar mais organizado mova lib32 e lib64 para aqui
+│   ├── etc
+│   │   ├── systemd # systemd
+│   │   │   ├── systemd.py - codigo systemd(processo executado no globals())
+│   │   │   ├── *.mnt # .ini de montagem automática 
+│   │   │   └── *.umnt # .ini de desmontagem automática
+│   │   ├── shells.txt # shells disponíveis
+│   │   └── shell.txt # shell usado, deve estar listado em shells.txt, default para o shell da distro
+│   └── framework # pacotes do framework, .pkg e .apkg
+├── mnt/ # filesystems montados
+├── pkg/ # pacotes instalados
+├── kernel.py # kernel
+└── boot.ini # configuração de boot
+
 ```
 
 ---
 
-## 📦 Descrição dos Diretórios
 
-- **system/code/** → Serviços e daemons do sistema  
-- **system/modules/** → Módulos Python adicionais  
-- **system/tmp/** → Arquivos temporários  
-- **system/apps/** → Aplicativos do sistema  
-- **mnt/** → Filesystems montados com `mnt()` e `configurar_fs()`
-- **pkg/** → Pacotes instalados
 
----
 
 ## ⚙️ Classe `distro`
 
@@ -236,7 +240,12 @@ ok, pid = VED(None, "init", "name")
 # namespaces do kernel
 - o kernel executa namespaces separados para apps e a distro e o kernel
 namespaces:
-```python
+
+```
+# b_filt é uma versão filtrada do builtins
+# modulotmp e modulotmp2 são versões seguras dos módulos os e shutil
+# open_customizado é versão segura do open
+
 APPC = {
 "__name__": "__app__",
 "VED": VED,
@@ -246,23 +255,32 @@ APPC = {
 "ler_IPC": ler_IPC,
 "limpar_IPC": limpar_IPC,
 "criar_processo_filho": criar_processo_filho,
-"__builtins__":  __builtins__,
+"__builtins__":  b_filt,
+"open": open_customizado,
 "listpkg": listpkg,
 "usepkg": usepkg,
 "checkpkg": checkpkg,
-"os": os,
+"os": modulotmp,
 "time": time,
-"shutil": shutil,
+"shutil": modulotmp2,
 "import2": __import__,
 "random": random,
 'sys_pid': sys_pid,
 "domestico": domestico,
-"LFV": LFV
+"LFV": LFV,
+"keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
+"exec_aex": exec_aex_app,
+"__colors__": Cores,
+"gdioad": gdioad,
+"sharedata": sharedata
 }
+
+
 
 SYSC = {
 '__name__': "__distro__",
-"__builtins__": __builtins__,
+"__builtins__": b_filt,
+"open": open_customizado,
 "mnt": mnt,
 "umnt": umnt,
 "configurar_fs": configurar_fs,
@@ -284,10 +302,10 @@ SYSC = {
 "listpkg": listpkg,
 "usepkg": usepkg,
 "checkpkg": checkpkg,
-"os": os,
+"os": modulotmp,
 "sys": sys,
 "time": time,
-"shutil": shutil,
+"shutil": modulotmp2,
 "random": random,
 "import2": __import__,
 "sys_pid": sys_pid,
@@ -295,7 +313,15 @@ SYSC = {
 "addperm": addperm,
 "delperm": delperm,
 "default_perm": default_perm,
-"LFV": LFV
+"LFV": LFV,
+"auroxperm": auroxperm,
+"LinuxFs": LinuxFs,
+"VED": VED,
+"keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
+"exec_aex": exec_aex,
+"__colors__": Cores,
+"gdioad": gdioad,
+"sharedata": sharedata
 }
 
 KRNLC = {
@@ -334,10 +360,65 @@ KRNLC = {
 "AuroxError": AuroxError,
 "appperms": appperms,
 "perm_padrao": perm_padrao,
-"LFV": LFV
+"LFV": LFV,
+"ler_uso_cpu_real": ler_uso_cpu_real,
+"ler_uso_ram_real": ler_uso_ram_real,
+"hw_instan_return": hw_instan_return,
+"appc": APPC,
+"ler_temperatura_real": ler_temperatura_real,
+"sys_fs": sys_fs,
+"exe": exe,
+"umnt_op": umnt_op,
+"__colors__": Cores
 }
 
+SHC = {
+'__name__': "__shell__",
+"__builtins__": b_filt,
+"open": open_customizado,
+"mnt": mnt,
+"umnt": umnt,
+"configurar_fs": configurar_fs,
+"matar_proc": matar_proc,
+"MCA": MCA,
+"distro": distro,
+"listar_proc": listar_proc,
+"IPC": IPC,
+"ler_IPC": ler_IPC,
+"limpar_IPC": limpar_IPC,
+"pwroff_krnl": pwroff_krnl,
+"debug": debug,
+"criar_processo_filho": criar_processo_filho,
+"CPFS": CPFS,
+"initapp": initapp,
+"reboot": reboot,
+"installpkg": installpkg,
+"delpkg": delpkg,
+"listpkg": listpkg,
+"usepkg": usepkg,
+"checkpkg": checkpkg,
+"os": os,
+"sys": sys,
+"time": time,
+"shutil": modulotmp2,
+"random": random,
+"import2": __import__,
+"sys_pid": sys_pid,
+"domestico": domestico,
+"addperm": addperm,
+"delperm": delperm,
+"default_perm": default_perm,
+"LFV": LFV,
+"auroxperm": auroxperm,
+"LinuxFs": LinuxFs,
+"VED": VED,
+"keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
+"exec_aex": exec_aex,
+"__colors__": Cores,
+"sharedata": sharedata
+}
 ```
+
 
 # 📃 como acessar relatório da classe distro?
 Para acessar o relatório da classe distro quando você está criando sua distribuição Aurox, você precisa criar uma instância da classe distro e armazenar essa instância em uma variável. Após a inicialização da distro, o relatório estará disponível no atributo .relat dessa instância.
@@ -385,8 +466,95 @@ tee: /etc/shells: Read-only file system
 - 📦 todos os processos tem um container criado pelo kernel, não é preciso se preocupar com o nome das variávei
 - ▶️ na lista do parâmetro services da classe distro, coloque os serviços na ordem que deseja que eles sejam inicializados
 - 🚫 se o desenvolvedor perceber simulação ele transforma em funcional
-- 🚨 pressione crtrl + f + r para forçar reinicio
+- 🚨 pressione ctrl + f + r para forçar reinicio
+- 📝 os formato de arquivos inventados pelo aurox são, .aex, .mnt, .umnt, .pkg, .apkg
 ---
+
+# COMO CRIAR ARQUIVOS DE CONFIGURAÇÃO DO AUROX
+
+BOOT.INI
+
+O arquivo boot.ini é essencial para inicializar a distro Aurox. Ele deve estar na raiz do sistema.
+
+Estrutura básica:
+
+[boot]
+not_init= init.py
+init= default
+sh_arch= 64
+force_debug= false
+
+[compatibility]
+s_hostsys= posix, nt
+gc= true
+perms_default= {"net": true, "matar": true, "matarsys": false, "filesystems": false, "ambiente": false, "sistema": false, "acesso_arquivos": false}
+compile_binarys= true
+disable_ioput= false
+libp= 64
+
+Explicação das seções:
+
+[boot]
+
+· not_init: serviços que a classe distro irá pular
+· init: tipo de inicialização (default para padrão)
+· sh_arch: arquitetura do shell (8, 16, 32, 64)
+· force_debug: forçar modo debug (true/false)
+
+[compatibility]
+
+· s_hostsys: sistemas operacionais suportados (posix=Linux/Mac, nt=Windows)
+· gc: ativar garbage collector (true/false)
+· perms_default: permissões padrão para apps
+· compile_binarys: compilar binários automaticamente (true/false)
+· disable_ioput: desativar input/output (true/false)
+· libp: versão de bibliotecas (32 ou 64)
+
+ARQUIVOS .MNT (AUTOMOUNT)
+
+Arquivos .mnt são usados pelo systemd para montar filesystems automaticamente. Devem ficar em system/etc/systemd/
+
+Exemplo: network.mnt
+
+[conf]
+cond= True
+fsname= network
+fs= net
+mount_script= configurar_fs('network', 'diretorio', '/sys/class/net', {'sync_mode': 'mirror', 'intervalo': 1})
+wait= 10
+
+## Estrutura:
+
+· cond: condição para montar (ex: True para sempre, ou uma expressão Python)
+· fsname: nome do filesystem
+· fs: filesystem a ser montado(nome técnico) · · mount_script: script para configurar após montagem
+· wait: intervalo entre verificações (segundos)
+
+ARQUIVOS .UMNT (AUTOUNMOUNT)
+
+Arquivos .umnt são usados para desmontar filesystems automaticamente. Devem ficar em system/etc/systemd/
+
+Exemplo: temp_fs.umnt
+
+[conf]
+cond= ler_uso_ram_real() > 80
+fsname= temp_fs
+wait= 5
+
+## Estrutura:
+
+· cond: condição para desmontar (ex: quando uso de RAM > 80%)
+· fsname: nome do filesystem a desmontar
+· wait: intervalo entre verificações (segundos)
+
+
+
+## NOTAS IMPORTANTES:
+
+· Todos os arquivos devem usar codificação UTF-8
+· As condições (cond) são expressões Python válidas
+· Os scripts de montagem podem usar qualquer função do kernel
+· Mudanças nos arquivos são aplicadas automaticamente
 
 ## 🚀 Começando
 
