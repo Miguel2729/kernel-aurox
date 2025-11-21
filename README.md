@@ -503,6 +503,7 @@ Explicação das seções:
 · init: tipo de inicialização (default para padrão)
 · sh_arch: arquitetura do shell (8, 16, 32, 64)
 · force_debug: forçar modo debug (true/false)
+· libp: quais bibliotecas carregar primeiro(32 ou 64)
 
 [compatibility]
 
@@ -511,7 +512,6 @@ Explicação das seções:
 · perms_default: permissões padrão para apps
 · compile_binarys: compilar binários automaticamente (true/false)
 · disable_ioput: desativar input/output (true/false)
-· libp: versão de bibliotecas (32 ou 64)
 
 ARQUIVOS .MNT (AUTOMOUNT)
 
