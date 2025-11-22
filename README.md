@@ -559,6 +559,171 @@ wait= 5
 · Os scripts de montagem podem usar qualquer função do kernel
 · Mudanças nos arquivos são aplicadas automaticamente
 
+AQUI ESTÁ O TEXTO PARA A DOCUMENTAÇÃO DO AUROX:
+
+COMO CRIAR PACOTES E APLICATIVOS PARA O AUROX
+
+O Aurox suporta três formatos principais de pacotes: .pkg, .apkg e .aex. Cada um tem propósitos específicos e estrutura própria.
+
+FORMATO .PKG (PACOTES SIMPLES)
+
+Um arquivo .pkg é um pacote simples contendo um único módulo Python.
+
+Estrutura:
+
+· arquivo.pkg (renomeie para .py para desenvolvimento)
+
+Requisitos:
+
+· Deve conter uma variável ambs definindo onde será disponibilizado
+· O código principal do pacote
+
+Exemplo de código:
+
+ambs = ["sys", "app", "shell"]  # Onde o pacote estará disponível
+
+def minha_funcao():
+return "Olá do pacote!"
+
+class MinhaClasse:
+def init(self):
+self.nome = "Meu Pacote"
+
+O pacote será importado como módulo Python normal
+
+Como usar:
+
+1. Desenvolva o código em um arquivo .py
+2. Adicione a variável ambs especificando os namespaces
+3. Renomeie para .pkg
+4. Coloque em system/framework/
+
+FORMATO .APKG (PACOTES AVANÇADOS)
+
+Um arquivo .apkg é um pacote zipado com estrutura complexa.
+
+Estrutura do diretório:
+nome_do_pacote/
+├──conf.py
+├──self
+├──lib/
+│└── bibliotecas.c
+├──funcs/
+│├── static/
+││   └── funcoes_estaticas.py
+│└── regular/
+│└── funcoes_regulares.py
+└──módulos_adicionais.py
+
+Arquivos obrigatórios:
+
+1. conf.py - Configuração do pacote:
+   ambs= ["sys", "app"]  # Namespaces
+   arch= "64"  # Arquitetura
+   type_add_class= "<instance>"  # ou "<class>"
+2. self - Definição de atributos:
+   nome="MeuPacote"
+   versao="1.0"
+   descricao="Um pacote avançado"
+3. Arquivos em funcs/static/ - Funções estáticas:
+
+funcoes_estaticas.py
+
+name = "minha_funcao_estatica"
+
+def main():
+return "Função estática executada"
+
+1. Arquivos em funcs/regular/ - Funções regulares:
+
+funcoes_regulares.py
+
+def main(param1, param2):
+return f"Parâmetros: {param1}, {param2}"
+
+1. lib/ - Bibliotecas C:
+
+· Arquivos .c serão compilados automaticamente
+
+Como criar:
+
+1. Crie a estrutura de diretórios
+2. Desenvolva todos os componentes
+3. Compacte para .zip
+4. Renomeie para .apkg
+5. Coloque em system/framework/
+
+FORMATO .AEX (APLICATIVOS EXECUTÁVEIS)
+
+Um arquivo .aex é um aplicativo executável compactado.
+
+Estrutura do arquivo .aex (renomeie para .zip para editar):
+
+· conf.ini
+· exe.py ou exe.code
+· exe.type
+
+Arquivos obrigatórios:
+
+1. conf.ini - Configuração:
+   [info]
+   name= NomeDoApp
+
+[info]
+name = nome_do_processo
+
+[compatibility]
+suported_distros= all_ou_nome_de_distros_aurox
+pkgs= pacote1, pacote2, pacote3
+
+[init]
+setup_exe= base64_do_codigo_setup
+interpreter= python3_ou_python2_ou_outro_interpretador no sistema
+
+1. exe.type - Tipo de execução:
+
+· "<main>" - Aplicativo principal
+· "<plugin>" - Plugin do sistema
+· "<library>" - Biblioteca
+· "<custom_driver>" - Driver personalizado
+· "<interpr>" - interpretador customizado
+
+1. exe.py - Código principal (Python):
+
+Código do aplicativo
+
+def main():
+print("Meu aplicativo Aurox!")
+
+if name == "main":
+main()
+
+1. exe.code - Código em outras linguagens (opcional)
+
+Como criar um .aex a partir de um app existente:
+
+
+sucesso, mensagem = exec_aex("app.aex", "<app>")
+
+Namespaces suportados:
+
+· "<app>" - Namespace de aplicativo
+· "<sys>" - Namespace do sistema
+· Namespace personalizado
+
+
+
+CONSIDERAÇÕES IMPORTANTES:
+
+
+1. Segurança: Código é executado em namespaces restritos
+2. Compatibilidade: Verifique as distros suportadas no conf.ini
+3. Dependências: Liste todos os pacotes necessários no conf.ini
+
+EXEMPLO COMPLETO DE CRIAÇÃO DE .AEX:
+
+
+
 ## 🚀 Começando
 
 1. Clone a estrutura base do Aurox  
