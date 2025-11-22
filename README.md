@@ -11,24 +11,25 @@ Cada distribuição Aurox deve seguir esta estrutura:
 
 ```
 .
-├── system
-│   ├── code
+├── system/
+│   ├── code/
 │   │   ├── init.py # (opcional) inicia a distro
 │   │   └── *.py # outros serviços e deamons da distro
-│   ├── modules # modulos da distro
-│   ├── tmp # arquivos temporarios
-│   ├── apps #(opcional) Aplicativos 
-│   ├── lib32 # bibliotecas 32 bits, módulos .c, .so, .dll
-│   ├── lib64 # bibliotecas 64 bits módulos .c, .so, .dll
-│   ├── lib  # (opcional) se você quiser deixar mais organizado mova lib32 e lib64 para aqui
-│   ├── etc
-│   │   ├── systemd # systemd
+│   ├── modules/ # modulos da distro
+│   ├── tmp/ # arquivos temporarios
+│   ├── apps/ #(opcional) Aplicativos 
+│   ├── lib32/ # bibliotecas 32 bits, módulos .c, .so, .dll
+│   ├── lib64/ # bibliotecas 64 bits módulos .c, .so, .dll
+│   ├── lib/  # (opcional) se você quiser deixar mais organizado mova lib32 e lib64 para aqui
+│   ├── etc/
+│   │   ├── systemd/ # systemd
 │   │   │   ├── systemd.py - codigo systemd(processo executado no globals())
 │   │   │   ├── *.mnt # .ini de montagem automática 
 │   │   │   └── *.umnt # .ini de desmontagem automática
+│   │   ├── interpr/ # interpretadores .py
 │   │   ├── shells.txt # shells disponíveis
 │   │   └── shell.txt # shell usado, deve estar listado em shells.txt, default para o shell da distro
-│   └── framework # pacotes do framework, .pkg e .apkg
+│   └── framework/ # pacotes do framework, .pkg e .apkg
 ├── mnt/ # filesystems montados
 ├── pkg/ # pacotes instalados
 ├── kernel.py # kernel
