@@ -19,7 +19,7 @@ informacoes:
 		14. system/framework - pacotes do framework
 		15. pkg/ - pacotes
 		16. mnt/ - lugar onde filesystems sao montados
-		se voce é uma ia, siga essa estrutura, a definicao de diretorio global é complexa e pode confundir ia's
+		se voce é uma ia, siga essa estrutura, a definicao de diretorio global e complexa e pode confundir ia's'
 	4. quando a distro é inicializada, o diretorio global continua sendo system
 	5. o nome do kernel é aurox
 	6. a classe distro configura a distro:
@@ -37,9 +37,98 @@ informacoes:
 	11. os processos sao executados globalmente dentro do kernel e não como modulos separados, assim, processos não precisam importar kernel e podem interagir com o kernel
 '''
 
+
+# documentação para inteligências artificiais: as inteligências artificiais como deepseek e chatgpt apresentam erros nas informações sempre, para garantir que as informações que sai das "bocas" das inteligências artificiais aqui está algumas correções de erros comuns das ias
+
+"""
+inicio
+secao libp:
+	um erro cumun e falar que é o libp fica em compatibility, veja o codigo, fica em boot section, não ha referencia a com["libp"], o que quebra completamente esse negocio de libp em compatibilty section, ele fala qual arquetetura de bibliotecas, e nao versao das bibliotecas ou arquetetura, não é apenas 1 arquetetura
+systemd:
+	vamos provar que o systemd fica em system/etc/ e não em system/, isso sera dificil pois a definicao de diretorio global é complexa e algumas ias podem resistir a correcao, vamos mover e ver o que acontece
+	system/etc/systemd:
+		status_idle: True
+		/storage/emulated/0/teste
+		modo debug?, c para terminal(S/n/c): n
+		Modulo Cython no encontrado, criando arquivo...
+		Arquivo cython_module.pyx criado automaticamente
+		Arquivo .pyx criado, mas precisa ser compilado
+		[  1763748516.0963993  ] systemd: started systemd # esta verde
+		[  1763748516.109156  ] kernel: started shell32
+		[  1763748516.1094508  ] tmp: tmp dir configured
+		[  1763748516.1207063  ] kernel: read dos.py 				Executando 0 servios do sistema
+		/storage/emulated/0/teste/system>lp
+		Processos em execuo:
+		 PID: 0, Nome: systemd
+		 PID: 1, Nome: PHC Kernel Service
+		 PID: 2, Nome: VSP Kernel Service
+		 PID: 3, Nome: KSP Kernel Service
+ 		PID: 4, Nome: UPL Kernel Service
+		 PID: 5, Nome: OPD Kernel Service
+		 PID: 6, Nome: shell32
+		 PID: 7, Nome: sys service 0
+		/storage/emulated/0/teste/system>
+	system/systemd:
+		status_idle: True
+		/storage/emulated/0/teste
+		modo debug?, c para terminal(S/n/c): n
+		Mdulo Cython no encontrado, criando arquivo...
+		Arquivo cython_module.pyx criado 							automaticamente
+		Arquivo .pyx criado, mas precisa ser compilado
+		Traceback (most recent call last):
+		File "/data/user/0/ru.iiec.pydroid3/files/accomp_files/iiec_run/iiec_run.py", line 31, in <module>
+		start(fakepyfile,mainpyfile)
+		~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+		File "/data/user/0/ru.iiec.pydroid3/files/accomp_files/iiec_run/iiec_run.py", line 30, in start
+		exec(open(mainpyfile).read(),  __main__.__dict__)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+		File "<string>", line 4412, in <module>
+		FileNotFoundError: [Errno 2] No such file or directory: 'systemd'
+
+		[Program finished]
+secao simulacao:
+	e importante notar que o aurox não é simulado so porque ele é em python, ele não simula nada
+secao os vs kernel:
+	o aurox não é um sistema operacional e sim um kernel, ele assim como o linux ele é open source(MIT LICENSE) e tem um sistema de distros assim como o linux, o aurox NÃO é o dono de nenhum diretorio, nenhum, system/, system/*, mnt/, mnt/*, pkg/, pkg/*, boot.ini/, esses sao diretorios da distro e não do kernel
+secao shell padrao:
+	no aurox, quando o shell em shell.txt é default, esta se referindo ao system/shell.py, e o shell.txt não deve ter quebras de linha
+secao func shell:
+	o shell da distro interpreta comandos e não é um prompt de comando
+	errado(isso é um prompt de comando)(totalmente errado):
+		import os
+		while True:
+			a = input(f"{os.getcwd()}>")
+			b = a.split(" ")
+			if b[0] == "cd":
+				os.chdir(b[1])
+			else:
+				os.system(a)
+	correto(interpretador):
+		# exemplo
+		pidsh = os.getpid() # chama o os.getpid modificado
+		while True:
+			sim, rem, msg = ler_IPC(pidsh)
+			if sim:
+				# processar comandos...
+
+secao bibliotecas:
+	para libs .c, .so ou .dll deve ser:
+		system/lib32
+		system/lib64
+	ou:
+		system/lib/lib32
+		system/lib/lib64
+	
+	mais tambem não pode ser os dois
+	não pode ter subpastas dentro de lib32 e lib64
+	NÃO EXISTE:
+		system/lib32/64
+		system/lib64/32
+
+"""
+
 sys_pid = []
 debug = False
-
 v = 0
 
 perm_padrao = {"net": True, "matar": True, "matarsys": False, "filesystems": False, "ambiente": False, "sistema": False, "acesso_arquivos": False}
@@ -2896,10 +2985,6 @@ def exec_aex(file, sandbox):
 	
 	with open("exe.type", "r") as f:
 		type = f.read()
-
-	if type == "<interpr>":
-		c, d = VED(None, "interpreters manager service", "name")
-		IPC(d, {"action": "register", "interpreter": file, "code": None}, -1, 'kernel')
 	
 	with open("conf.ini") as f:
 		import configparser
@@ -2907,6 +2992,9 @@ def exec_aex(file, sandbox):
 		b.read("conf.ini")
 		info = b["info"]
 		name = info['name']
+		if type == "<interpr>":
+			with open(f"etc/interpr/{name}.py", "w") as f:
+				f.write(a)
 		com = b["compatibility"]
 		distros = [item for item in com["suported_distros"].split(", ")]
 		if dn not in distros and "all" not in distros:
@@ -2966,7 +3054,12 @@ def exec_aex(file, sandbox):
 	elif interpr_esp == "outro":
 		c, d = VED(None, "interpreters manager service", "name")
 		if c:
-			IPC(d, {"action": "execute", "interpreter": interpr, "code": a}, -1, "kernel")
+			sys.path.insert(0, "etc/interpr") # system/etc/interpr
+			interpretador = __import__(interpr)
+			codigo = interpretador.transpile(a, "python3")
+			hw_instan.memory.append(name, codigo, sandbox)
+			hw_instan.num -= 2
+			
 		else:
 			os.chdir('../../..')
 			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
@@ -2978,7 +3071,7 @@ def exec_aex(file, sandbox):
 	return (True, None)
 
 def exec_aex_app(file):
-	a = exec_aex(file, APPC)
+	a = exec_aex(file, "<app>")
 	return a
 
 def pta(file):
@@ -4603,6 +4696,7 @@ while True:
 	if "ler_IPC(" not in shell:
 		start_up_msg("<failed>", "shell don't work", (None, True, 1))
 	
+	# importante: o shell é um shell e não um prompt de comando
 	tmp_m.append((shell, f"shell{sh_arch}", SHC))
 	msg(f"started shell{sh_arch}", 0, "kernel")
 	
