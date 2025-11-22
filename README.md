@@ -562,7 +562,7 @@ wait= 5
 
 AQUI ESTÁ O TEXTO PARA A DOCUMENTAÇÃO DO AUROX:
 
-COMO CRIAR PACOTES E APLICATIVOS PARA O AUROX
+# COMO CRIAR PACOTES E EXECUTAVEIS PARA O AUROX
 
 O Aurox suporta três formatos principais de pacotes: .pkg, .apkg e .aex. Cada um tem propósitos específicos e estrutura própria.
 
@@ -654,9 +654,9 @@ Como criar:
 4. Renomeie para .apkg
 5. Coloque em system/framework/
 
-FORMATO .AEX (APLICATIVOS EXECUTÁVEIS)
+FORMATO .AEX (EXECUTÁVEIS)
 
-Um arquivo .aex é um aplicativo executável compactado.
+Um arquivo .aex é um executável compactado.
 
 Estrutura do arquivo .aex (renomeie para .zip para editar):
 
@@ -667,11 +667,9 @@ Estrutura do arquivo .aex (renomeie para .zip para editar):
 Arquivos obrigatórios:
 
 1. conf.ini - Configuração:
-   [info]
-   name= NomeDoApp
 
 [info]
-name = nome_do_processo
+name = nome
 
 [compatibility]
 suported_distros= all_ou_nome_de_distros_aurox
@@ -691,17 +689,16 @@ interpreter= python3_ou_python2_ou_outro_interpretador no sistema
 
 1. exe.py - Código principal (Python):
 
-Código do aplicativo
+Código do executavel
 
 def main():
-print("Meu aplicativo Aurox!")
+print("Meu executavel Aurox!")
 
 if name == "main":
-main()
+    main()
 
 1. exe.code - Código em outras linguagens (opcional)
 
-Como criar um .aex a partir de um app existente:
 
 
 sucesso, mensagem = exec_aex("app.aex", "<app>")
@@ -722,7 +719,9 @@ CONSIDERAÇÕES IMPORTANTES:
 2. Compatibilidade: Verifique as distros suportadas no conf.ini
 3. Dependências: Liste todos os pacotes necessários no conf.ini
 
-EXEMPLO COMPLETO DE CRIAÇÃO DE .AEX:
+# interpretadores
+- eles ficam em system/etc/interpr
+- eles são módulos python que tem uma função transpile que transpila o código dessa linguagem de programação customizada para python, ela ira receber dois parâmetros, o primeiro é o código e o segundo é sempre "python3"
 
 
 
