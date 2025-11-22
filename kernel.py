@@ -125,6 +125,10 @@ secao bibliotecas:
 		system/lib32/64
 		system/lib64/32
 
+secao mnt func:
+	nomefs: nome do filesystem
+	fs: nome tecnico(não usado mais não é opcional)
+
 """
 
 sys_pid = []
@@ -2995,6 +2999,7 @@ def exec_aex(file, sandbox):
 		if type == "<interpr>":
 			with open(f"etc/interpr/{name}.py", "w") as f:
 				f.write(a)
+			return (True, None)
 		com = b["compatibility"]
 		distros = [item for item in com["suported_distros"].split(", ")]
 		if dn not in distros and "all" not in distros:
