@@ -710,6 +710,7 @@ Namespaces suportados:
 · "<app>" - Namespace de aplicativo
 · "<sys>" - Namespace do sistema
 · Namespace personalizado
+importante: para aplicativos o Parâmetro que recebe namespace nao está disponível e é automaticamente "<app>"
 
 
 
