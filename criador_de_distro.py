@@ -8,6 +8,35 @@ import tempfile
 import subprocess
 import sys
 from pathlib import Path
+import urllib.request
+import urllib.error
+import base64
+import json
+def get_github_file_content_raw():
+    """
+    Obtém o conteúdo do arquivo usando a URL raw do GitHub.
+    
+    Returns:
+        str: Conteúdo do arquivo ou mensagem de erro
+    """
+    try:
+        # URL raw direta do arquivo (assumindo branch 'main')
+        url = "https://raw.githubusercontent.com/Miguel2729/kernel-aurox/main/kernel.py"
+        
+        # Criar requisição
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0')
+        
+        # Fazer a requisição
+        with urllib.request.urlopen(req) as response:
+            return response.read().decode('utf-8')
+            
+    except urllib.error.HTTPError as e:
+        return f"Erro HTTP: {e.code} - {e.reason}"
+    except urllib.error.URLError as e:
+        return f"Erro de URL: {e.reason}"
+    except Exception as e:
+        return f"Erro inesperado: {e}"
 
 class AuroxDistroCreator:
     def __init__(self, root):
@@ -332,6 +361,9 @@ class AuroxDistroCreator:
             self.open_file(path)
             
     def open_file(self, path):
+        if path.endswith("kernel.py"):
+            messagebox.showerror("erro", "voce não pode abrir o kernel porque ele ira travar o editor")
+            return
         try:
             with open(path, 'r', encoding='utf-8') as file:
                 content = file.read()
@@ -355,7 +387,7 @@ class AuroxDistroCreator:
             # Aplicar syntax highlighting
             self.highlight_syntax()
         except Exception as e:
-            messagebox.showerror(f"erro ao abrir arquivo: {e}")
+            messagebox.showerror("erro", f"erro ao abrir arquivo: {e}")
             
             
     def save_file(self):
@@ -449,6 +481,7 @@ class AuroxDistroCreator:
             return
             
         estrutura = {
+            'kernel.py': get_github_file_content_raw(),
             'system': {
                 'apps': {},
                 'code': {'init.py': 'print("Distribuição Aurox inicializada!")\n'},
@@ -457,7 +490,67 @@ class AuroxDistroCreator:
                 'etc': {
                     'shells.txt': 'default\n',
                     'shell.txt': 'default',
-                    'systemd': {},
+                    'systemd': {
+                        "systemd.py": """# modifique isso para seu codigo do systemd
+pass
+""",
+                        "usb.mnt": """[conf]
+cond = any(os.path.exists(f'/media/usb{i}') for i in range(10))
+fsname = pen-drive
+fs = /dev/sdb1
+mount_script = |
+    import threading
+    import time
+    import shutil
+    import os
+    
+    def sync_pen_drive():
+        while os.path.exists('../mnt/pen-drive'):
+            # Encontrar pen-drive real
+            pen_drive_path = None
+            for i in range(10):
+                test_path = f'/media/usb{i}'
+                if os.path.exists(test_path):
+                    pen_drive_path = test_path
+                    break
+            
+            if pen_drive_path:
+                mount_point = '../mnt/pen-drive'
+                
+                # Sincronização bidirecional
+                try:
+                    # Do pen-drive para filesystem Aurox
+                    for item in os.listdir(pen_drive_path):
+                        src = os.path.join(pen_drive_path, item)
+                        dst = os.path.join(mount_point, item)
+                        if os.path.isfile(src) and (not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst)):
+                            shutil.copy2(src, dst)
+                    
+                    # Do filesystem Aurox para pen-drive (opcional)
+                    for item in os.listdir(mount_point):
+                        if item not in ['hardware.info', 'servico_hardware.status']:
+                            src = os.path.join(mount_point, item)
+                            dst = os.path.join(pen_drive_path, item)
+                            if os.path.isfile(src) and (not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst)):
+                                shutil.copy2(src, dst)
+                except Exception as e:
+                    print(f"Erro na sincronização: {e}")
+            
+            time.sleep(2)  # Sincronizar a cada 2 segundos
+    
+    # Iniciar sincronização em thread separada
+    sync_thread = threading.Thread(target=sync_pen_drive, daemon=True)
+    sync_thread.start()
+    
+    configurar_fs('pen-drive', 'hardware', 'portable0', {'aut': True})
+wait = 5
+""",
+                        "usb.umnt": """[conf]
+cond = not any(os.path.exists(f'/media/usb{i}') for i in range(10)) and os.path.exists('../mnt/pen-drive')
+fsname = pen-drive
+wait = 5
+"""
+                    },
                     "interpr": {}
                 },
                 'lib32': {},
