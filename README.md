@@ -1,4 +1,4 @@
-![logo](logo10_17_10307.png)
+![logo](logo.webp)
 
 O **Kernel Aurox** é um script python que implementa funcionalidades de um kernel sem simulação(para fins produtivos) projetado para criar **distribuições personalizadas** do sistema Aurox.  
 Ele é **educacional**(educacional se o professor tiver cuidado porque o aurox é produtivo) e **produtivo** e permite montar e fazer ambientes completos com suporte a processos, arquivos, sistemas de arquivos, pacotes e até aplicativos, ele também não é complexo mais também não é limitado, ele é poderoso e simples
