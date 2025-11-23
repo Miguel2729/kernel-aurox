@@ -758,3 +758,4 @@ finalizando...
 📅 **Última atualização:** Outubro de 2025  
 👨‍💻 **Autor:** Miguel  
 🧩 **Licença:** MIT
+
