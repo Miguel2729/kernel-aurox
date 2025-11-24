@@ -247,6 +247,559 @@ namespaces:
 # modulotmp e modulotmp2 são versões seguras dos módulos os e shutil
 # open_customizado é versão segura do open
 
+# deixei algumas funções e classes para não precisar documentar
+
+
+def exec_aex(file, sandbox):
+	# ipcs para processos sao processos que a distro implementa não o kernel, kernel não é o dono de system/, pkg/, e nem mnt/, sao da distro
+	global hw_instan, modulotmp, APPC, SYSC
+	import zipfile
+	import os
+	if sandbox == "<app>":
+		sandbox == APPC
+	elif sandbox == "<sys>":
+		sandbox == SYSC
+	else:
+		pass # faz nada, permite namespace customizado
+	if not file.endswith(".aex"):
+		return (False, "não é um arquivo .aex")
+	os.makedirs("./tmp/run", exist_ok=True)
+	os.rename(file, file.replace(".aex", ".zip"))
+	with zipfile.ZipFile(file.replace(".aex", ".zip"), "r") as zip:
+		zip.extractall(f"./tmp/run/{file.replace('.aex', '')}")
+	os.chdir(f"./tmp/run/{file.replace('.aex', '')}")
+	with open('../../../info/nome.txt') as f:
+		dn = f.read()
+	tmp = os.listdir()
+	
+	if "exe.py" in tmp:
+		with open("exe.py", "r") as f:
+			a = f.read()
+			a_copy = a
+			a = compile(a, "<string>", mode="exec", optimize=2)
+			interpr_esp = "py"
+	elif "exe.code" in tmp:
+		with open("exe.code", "r") as f:
+			a = f.read()
+			interpr_esp = "outro"
+	
+	with open("exe.type", "r") as f:
+		type = f.read()
+	
+	with open("conf.ini") as f:
+		import configparser
+		b = configparser.ConfigParser(allow_no_value=True)
+		b.read("conf.ini")
+		info = b["info"]
+		name = info['name']
+		if type == "<interpr>":
+			with open(f"etc/interpr/{name}.py", "w") as f:
+				f.write(a)
+			return (True, None)
+		com = b["compatibility"]
+		distros = [item for item in com["suported_distros"].split(", ")]
+		if dn not in distros and "all" not in distros:
+			os.chdir('../../..')
+			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+			os.rename(file.replace('.aex', ".zip"), file)
+			return (False, "não é compativel")
+		
+		pacotes = [item for item in com["pkgs"].split(", ")]
+		pkgs_dir = os.listdir('../../../../pkgs')
+		sim = all(item in pkgs_dir for item in pacotes)
+		if not pacotes:
+			os.chdir('../../..')
+			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+			os.rename(file.replace('.aex', ".zip"), file)
+			return (False, "falta de dependencias")
+		
+		init = b['init']
+		for inst in [item for item in init["setup_exe"].split(", ")]:
+			try:
+				exec(base64.b64decode(inst))
+			except Exception as e:
+				os.chdir('../../..')
+				shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+				os.rename(file.replace('.aex', ".zip"), file)
+				return (False, f"error: {e}")
+		interpr = init["interpreter"]
+	if interpr == "python3" and type == "<main>" and interpr_esp == "py":
+		hw_instan.memory.append(name, a, sandbox)
+		hw_instan.num -= 2
+	elif interpr == "python2" and type == "<main>" and interpr_esp == "py":
+		a = compile(a_copy, "<string>", mode="exec", dont_inherit=True, optimize=2)
+		hw_instan.memory.append(name, a, sandbox)
+		hw_instan.num -= 2
+	elif type == "<plugin>" and interpr_esp == "py":
+		return carregar_como_plugin(file, name)
+	elif type == "<library>":
+		return carregar_como_library(file, name)
+	elif type == "<custom_driver>" and interpr_esp == "py":
+		DRIVC = {
+		"__builtins__": __builtins__,
+		"IPC": IPC,
+		"ler_IPC": ler_IPC,
+		"os": modulotmp,
+		"sys": sys,
+		"mnt": mnt,
+		"umnt": umnt,
+		"configurar_fs": configurar_fs,
+		"shareata": sharedata,
+		"VED": VED,
+		"LFV": LFV,
+		"PHC": PHC
+		}
+		sim, pid = VED(None, "drivers manager service", "name")
+		if sim:
+			IPC(pid, {"action": "add", "code": a, "interpreter": interpr, "namespace": DRIVC}, -1, "kernel")
+	elif interpr_esp == "outro":
+		c, d = VED(None, "interpreters manager service", "name")
+		if c:
+			sys.path.insert(0, "etc/interpr") # system/etc/interpr
+			interpretador = __import__(interpr)
+			codigo = interpretador.transpile(a, "python3")
+			hw_instan.memory.append(name, codigo, sandbox)
+			hw_instan.num -= 2
+			
+		else:
+			os.chdir('../../..')
+			shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+			os.rename(file.replace('.aex', ".zip"), file)
+			return (False, "impossivel encontrar o interpretador")
+	os.chdir('../../..')
+	shutil.rmtree("./tmp/run/{file.replace('.aex', '')}")
+	os.rename(file.replace('.aex', ".zip"), file)
+	return (True, None)
+
+def exec_aex_app(file):
+	a = exec_aex(file, "<app>")
+	return a
+
+def pta(file):
+	dirs = [item for item in file.split('/')]
+	nome = dirs[-1].replace('.py', "")
+	import re
+	with open(file, "r") as f:
+		code = f.read()
+	
+	padrao = r"usepkg\(([^)]+)\)"
+	pacotes = re.findall(padrao, code)
+	for i in range(len(pacotes)):
+		pacotes[i] = pacotes[i].split(", ")[0]
+	string = ""
+	for i, pkg in enumerate(pacotes):
+		i += 1 # indices 1-basied
+		if i < len(pacotes):
+			string += f"{pkg}, "
+		else:
+			string += pkg
+		
+		
+	
+	a = configparser.ConfigParser(allow_no_value=True)
+	a['init'] = {
+	"setup_exe": "",
+	"interpreter": "python3",
+	}
+	a['compatibility'] = {
+	"suported_distros": "all",
+	"pkgs": string
+	}
+	
+	a['info'] = {
+	"name": nome
+	}
+	
+	os.mkdir(f"./{nome}")
+	with open(f"./{nome}/conf.ini", "w") as f:
+		a.write(f)
+	with open(f"./{nome}/exe.py", "w") as f:
+		f.write(code)
+	with open(f"./{nome}/exe.type", "w") as f:
+		f.write("<main>")
+	
+	shutil.make_archive(f"{nome}", "zip", f"./{nome}")
+	os.rename(f'{nome}.zip', f"{nome}.aex")
+	
+class Cores:
+    # Reset
+    RESET = '\033[0m'
+    
+    # Cores básicas do texto (4 bits)
+    PRETO = '\033[30m'
+    VERMELHO = '\033[31m'
+    VERDE = '\033[32m'
+    AMARELO = '\033[33m'
+    AZUL = '\033[34m'
+    MAGENTA = '\033[35m'
+    CIANO = '\033[36m'
+    BRANCO = '\033[37m'
+    
+    # Cores brilhantes
+    CINZA = '\033[90m'
+    VERMELHO_CLARO = '\033[91m'
+    VERDE_CLARO = '\033[92m'
+    AMARELO_CLARO = '\033[93m'
+    AZUL_CLARO = '\033[94m'
+    MAGENTA_CLARO = '\033[95m'
+    CIANO_CLARO = '\033[96m'
+    BRANCO_BRILHANTE = '\033[97m'
+    
+    # Estilos
+    NEGRITO = '\033[1m'
+    ITALICO = '\033[3m'
+    SUBLINHADO = '\033[4m'
+    
+    # Cores personalizadas (8 bits)
+    @staticmethod
+    def laranja(texto):
+        return f'\033[38;5;214m{texto}{Cores.RESET}'
+    
+    @staticmethod
+    def rosa(texto):
+        return f'\033[38;5;213m{texto}{Cores.RESET}'
+    
+    @staticmethod
+    def roxo(texto):
+        return f'\033[38;5;129m{texto}{Cores.RESET}'
+    
+    @staticmethod
+    def cor_personalizada(texto, codigo_cor):
+        return f'\033[38;5;{codigo_cor}m{texto}{Cores.RESET}'
+
+# gdioad(graphic distro input/output adaptation), adaptacao input e print para distros com interface grafica
+
+def gdioad(novo_input, novo_print):
+    """
+    Substitui as funções built-in input() e print() por funções personalizadas.
+    
+    Args:
+        novo_input: Função que substituirá a input() original
+        novo_print: Função que substituirá a print() original
+    """
+    # Salva as funções originais como atributos da função gdioad
+    gdioad.input_original = __builtins__.input
+    gdioad.print_original = __builtins__.print
+    
+    # Sobrescreve as funções built-in
+    __builtins__.input = novo_input
+    __builtins__.print = novo_print
+    
+    # Função para restaurar as funções originais
+    def restaurar():
+        __builtins__.input = gdioad.input_original
+        __builtins__.print = gdioad.print_original
+    
+    gdioad.restaurar = restaurar
+
+class TuplaSegura:
+    def __init__(self, *itens):
+        self._itens = list(itens)
+        self._permissoes = {}  # {indice: {pids_autorizados}}
+        self._modo_kernel = False  # 🆕 Controle de modo kernel
+    
+    def definir_acesso(self, indice, pids_autorizados):
+        """Define quais PIDs podem acessar um item específico"""
+        self._permissoes[indice] = set(pids_autorizados)
+    
+    def ler(self, indice, pid_requisitante):
+        """Lê um item apenas se o PID tiver permissão"""
+        # 🆕 Se está em modo kernel, ignora todas as verificações
+        if self._modo_kernel:
+            return self._itens[indice]
+            
+        if indice in self._permissoes:
+            if pid_requisitante in self._permissoes[indice]:
+                return self._itens[indice]
+            else:
+                return f"PID {pid_requisitante} não tem acesso ao item {indice}"
+        else:
+            return self._itens[indice]  # Item sem restrições
+    
+    def __getitem__(self, chave):
+        # Para uso normal, sem verificação de PID
+        return self._itens[chave]
+    
+    # 🆕 MÉTODOS DE ACESSO KERNEL
+    def _ativar_modo_kernel(self):
+        """Ativa modo de acesso kernel (sem verificações)"""
+        self._modo_kernel = True
+    
+    def _desativar_modo_kernel(self):
+        """Desativa modo de acesso kernel"""
+        self._modo_kernel = False
+    
+    def _acesso_kernel(self, indice):
+        """Acesso direto do kernel - SEM verificações de PID"""
+        return self._itens[indice]
+    
+    # 🆕 Context manager para acesso kernel
+    def __enter__(self):
+        """Para uso com 'with' no kernel"""
+        self._modo_kernel = True
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Sai do modo kernel"""
+        self._modo_kernel = False
+
+
+class sharedata:
+	@staticmethod
+	def set(d_name, value, ypid):
+		global containers
+		if d_name in containers["shareddata"]:
+			return f"ja existe {d_name}"
+		containers["shareddata"][d_name] = TuplaSegura(value, ypid)
+		containers['shareddata'][d_name].definir_acesso(1, {ypid, -1})
+		return "criado com sucesso!"
+		
+		
+	@staticmethod
+	def access(d_name):
+		global containers
+		return containers["shareddata"][d_name][0]
+	
+	@staticmethod
+	def list_dnames():
+		global containers
+		return list(containers['shareddata'].keys())
+	
+	@staticmethod
+	def deldata(d_name, ypid):
+		global containers
+		a = containers["shareddata"][d_name]
+		with a:
+			if a._acesso_kernel(1) != ypid:
+				return False
+		del containers["shareddata"][d_name]
+		return True
+		
+	@staticmethod
+	def updatedata(d_name, new_value, ypid):
+		with containers["shareddata"][d_name]:
+			 a = containers["shareddata"][d_name].ler(1, -1)
+			 if a != ypid:
+			 	return False
+			 else:
+			 	containers["shareddata"][d_name][0] = new_value
+
+import types
+import os
+import shutil
+from pathlib import Path
+
+# Função auxiliar para normalizar caminhos relativos à root
+def _normalizar_caminho(caminho):
+	global root, modulotmp
+	if caminho.startswith("/"):
+		return root + caminho
+	elif caminho.startswith('./') or not caminho.startswith("/") or not caminho.startswith(".."):
+		diretorio = modulotmp.getcwd()
+		caminho = caminho.replace(".", "")
+		return diretorio + caminho
+	elif camimho.startswith("../"):
+		diret = modulotmp.getcwd()
+		diret = diret.split("/")
+		del diret[-1]
+		string = ""
+		for item in diret:
+			string += f"/{item}"
+		string += caminho
+		return string 
+	
+# modulotmp - versão segura do os
+modulotmp = types.ModuleType("modulo")
+
+# Adiciona todas as funções do os exceto system e getpid
+for func in dir(os):
+    if func not in ["system", "getpid"]:
+        attr = getattr(os, func)
+        
+        # Para funções que operam em caminhos de arquivos, criar versões seguras
+        if callable(attr) and any(param in func.lower() for param in ['path', 'file', 'dir', 'mkdir', 'remove', 'rename']):
+            def criar_funcao_segura(original_func, func_name):
+                def funcao_segura(*args, **kwargs):
+                    # Processa argumentos que são caminhos
+                    novos_args = []
+                    for arg in args:
+                        if isinstance(arg, (str, Path)):
+                            novos_args.append(_normalizar_caminho(str(arg)))
+                        else:
+                            novos_args.append(arg)
+                    
+                    # Processa kwargs que são caminhos
+                    novos_kwargs = {}
+                    for key, value in kwargs.items():
+                        if isinstance(value, (str, Path)) and any(path_key in key.lower() for path_key in ['path', 'file', 'dir']):
+                            novos_kwargs[key] = _normalizar_caminho(str(value))
+                        else:
+                            novos_kwargs[key] = value
+                    
+                    return original_func(*novos_args, **novos_kwargs)
+                
+                # Mantém o nome original da função para debugging
+                funcao_segura.__name__ = func_name
+                return funcao_segura
+            
+            attr_seguro = criar_funcao_segura(attr, func)
+            setattr(modulotmp, func, attr_seguro)
+        else:
+            # Para funções que não operam em caminhos, usa diretamente
+            setattr(modulotmp, func, attr)
+
+# Função system personalizada para modulotmp
+def sc(command):
+    import inspect
+    frame_chamador = inspect.currentframe().f_back
+    
+    # Executa código no contexto do chamador
+    frame_chamador.f_globals['variavel_no_chamador'] = "Valor definido pelo módulo"
+    
+    # Executa uma expressão no contexto do chamador
+    archs = ["8", '16', "32", '64']
+    for item in archs:
+        exec(f'ostmp = VED(None, "shell{item}", "name")', frame_chamador.f_globals, frame_chamador.f_locals)
+        if frame_chamador.f_locals["ostmp"][0]:
+            break
+    
+    exec(f'IPC(ostmp, {command}, -1, "os")', frame_chamador.f_globals, frame_chamador.f_locals)
+
+setattr(modulotmp, "system", sc)
+
+# Função getpid personalizada para modulotmp
+def getpidc():
+    '''
+    Retorna o PID do processo Aurox que está chamando a função
+    em vez do PID do processo Python do host
+    '''
+    import inspect
+    
+    # Obtém o frame do chamador
+    frame_chamador = inspect.currentframe().f_back
+    
+    try:
+        # Procura o PID nos frames da pilha de execução
+        for frame_info in inspect.stack():
+            frame = frame_info.frame
+            
+            # Verifica se este frame pertence a um processo Aurox
+            if 'hw_instan' in globals() and hasattr(hw_instan, 'ppn'):
+                # Procura qual PID corresponde a este frame
+                for pid, info in hw_instan.ppn.items():
+                    # Verifica se o frame atual corresponde a este processo
+                    # Comparando o nome do processo com informações do frame
+                    frame_globals = frame.f_globals
+                    frame_locals = frame.f_locals
+                    
+                    # Tenta encontrar correspondência pelo contexto de execução
+                    if ('__name__' in frame_globals and frame_globals['__name__'] in ['__app__', '__distro__', '__shell__', '__aurox__']):
+                        return pid
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+setattr(modulotmp, 'getpid', getpidc)
+
+# modulotmp2 - versão segura do shutil
+modulotmp2 = types.ModuleType("modulo_shutil")
+
+# Adiciona todas as funções do shutil com segurança de caminhos
+for func in dir(shutil):
+    attr = getattr(shutil, func)
+    
+    if callable(attr):
+        def criar_funcao_shutil_segura(original_func, func_name):
+            def funcao_segura(*args, **kwargs):
+                # Processa argumentos que são caminhos
+                novos_args = []
+                for arg in args:
+                    if isinstance(arg, (str, Path)):
+                        novos_args.append(_normalizar_caminho(str(arg)))
+                    else:
+                        novos_args.append(arg)
+                
+                # Processa kwargs que são caminhos
+                novos_kwargs = {}
+                for key, value in kwargs.items():
+                    if isinstance(value, (str, Path)) and any(path_key in key.lower() for path_key in ['path', 'file', 'dir', 'src', 'dst']):
+                        novos_kwargs[key] = _normalizar_caminho(str(value))
+                    else:
+                        novos_kwargs[key] = value
+                
+                return original_func(*novos_args, **novos_kwargs)
+            
+            funcao_segura.__name__ = func_name
+            return funcao_segura
+        
+        attr_seguro = criar_funcao_shutil_segura(attr, func)
+        setattr(modulotmp2, func, attr_seguro)
+    else:
+        setattr(modulotmp2, func, attr)
+
+# open_customizado - versão segura do open built-in
+def open_customizado(file, mode="r", *args, **kwargs):
+    """
+    Versão segura do open que sempre trabalha com caminhos relativos à root
+    
+    Args:
+        file: caminho do arquivo
+        mode: modo de abertura
+        *args, **kwargs: outros parâmetros do open
+    
+    Returns:
+        file object aberto
+    """
+    caminho_seguro = _normalizar_caminho(str(file))
+    return __builtins__.open(caminho_seguro, mode, *args, **kwargs)
+
+
+
+
+		
+b_filt = types.ModuleType('b')
+import builtins
+for com in dir(builtins):
+	if com != "open":
+		b_filt.__dict__[com] = getattr(builtins, com)
+
+def login(usuario, senha=""):
+	global user
+	if os.path.exists(f"/users/{user}/data/password"):
+		with open(f"/users/{user}/data/password", "r") as f:
+			senhacod = f.read()
+			password = base64.b64decode(senhacod).decode("utf-8")
+	else:
+		password = senha
+	if senha == password:
+		user = usuario
+		return user_files()
+	else:
+		raise PermissionError("Incorrect password for user {usuario}")
+	
+def reg_user(usuario, senha=""):
+	os.makedirs(f"/users/{usuario}/data/home", exist_ok=True)
+	os.makedirs(f"/user/{usuario}/apps", exist_ok=True)
+	os.makedirs(f"/users/{usuario}/archived", exist_ok=True)
+	if senha != "":
+		with open(f'/users/{usuario}/data/password', 'w') as f:
+			f.write(base64.b64encode(senha.encode("utf-8")))
+
+def del_user(usuario, senha=""):
+	if os.path.exists(f"/users/{usuario}"):
+		with open(f"/users/{usuario}/data/password", "r"):
+			password = base64.b64decode(f.read()).decode("utf-8")
+	else:
+		password = senha
+	
+	if senha == password:
+		shutil.rmtree(f"/user/{usuario}")
+	else:
+		raise PermissionError("Incorrect password for user {usuario}")
+
+
 APPC = {
 "__name__": "__app__",
 "VED": VED,
@@ -273,7 +826,11 @@ APPC = {
 "exec_aex": exec_aex_app,
 "__colors__": Cores,
 "gdioad": gdioad,
-"sharedata": sharedata
+"sharedata": sharedata,
+"user_files": user_files,
+"login": login,
+"reg_user": reg_user,
+"del_user": del_user
 }
 
 
@@ -322,8 +879,14 @@ SYSC = {
 "exec_aex": exec_aex,
 "__colors__": Cores,
 "gdioad": gdioad,
-"sharedata": sharedata
+"sharedata": sharedata,
+"user_files": user_files,
+"login": login,
+"reg_user": reg_user,
+"del_user": del_user
 }
+
+# deixei algumas funções e classes para não precisar documentar
 
 KRNLC = {
 '__name__': "__aurox__",
@@ -416,8 +979,13 @@ SHC = {
 "keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
 "exec_aex": exec_aex,
 "__colors__": Cores,
-"sharedata": sharedata
+"sharedata": sharedata,
+"user_files": user_files,
+"login": login,
+"reg_user": reg_user,
+"del_user": del_user
 }
+
 ```
 
 
