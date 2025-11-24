@@ -129,7 +129,12 @@ secao mnt func:
 	nomefs: nome do filesystem
 	fs: nome tecnico(não usado mais não é opcional)
 
+secao dir:
+	a escolha de ../mnt e ../pkg não é estranha, o diretorio global é sempre system entao se fosss ./mnt e ./pkg, pkg e mnt teriam que estar dentro de system/ que não é o desejado
+
 """
+
+user = "owner"
 
 sys_pid = []
 debug = False
@@ -151,7 +156,239 @@ import hashlib
 import configparser
 import base64
 import ctypes
+from pathlib import Path
 
+class user_files:
+    def __init__(self):
+        global root, user
+        self.user_dir = f"{root}/users/{user}/data/user/home"
+        # Garante que o diretório do usuário existe
+        os.makedirs(self.user_dir, exist_ok=True)
+    
+    def _get_full_path(self, path):
+        """Retorna o caminho absoluto dentro do diretório do usuário"""
+        if os.path.isabs(path):
+            # Se já for um caminho absoluto, verifica se está dentro do diretório do usuário
+            if path.startswith(self.user_dir):
+                return path
+            else:
+                raise PermissionError("Acesso fora do diretório do usuário não permitido")
+        return os.path.join(self.user_dir, path)
+    
+    # Operações básicas de arquivo
+    def open(self, filepath, mode='r', encoding=None):
+        """Abre um arquivo"""
+        full_path = self._get_full_path(filepath)
+        if 'b' in mode:
+            return open(full_path, mode)
+        else:
+            return open(full_path, mode, encoding=encoding)
+    
+    def exists(self, path):
+        """Verifica se um arquivo ou diretório existe"""
+        return os.path.exists(self._get_full_path(path))
+    
+    def is_file(self, path):
+        """Verifica se é um arquivo"""
+        return os.path.isfile(self._get_full_path(path))
+    
+    def is_dir(self, path):
+        """Verifica se é um diretório"""
+        return os.path.isdir(self._get_full_path(path))
+    
+    # Operações do shutil
+    def copy(self, src, dst):
+        """Copia um arquivo"""
+        src_path = self._get_full_path(src)
+        dst_path = self._get_full_path(dst)
+        return shutil.copy(src_path, dst_path)
+    
+    def copy2(self, src, dst):
+        """Copia um arquivo preservando metadados"""
+        src_path = self._get_full_path(src)
+        dst_path = self._get_full_path(dst)
+        return shutil.copy2(src_path, dst_path)
+    
+    def copyfile(self, src, dst):
+        """Copia o conteúdo do arquivo src para dst"""
+        src_path = self._get_full_path(src)
+        dst_path = self._get_full_path(dst)
+        return shutil.copyfile(src_path, dst_path)
+    
+    def copytree(self, src, dst, symlinks=False, ignore=None):
+        """Copia uma árvore de diretórios recursivamente"""
+        src_path = self._get_full_path(src)
+        dst_path = self._get_full_path(dst)
+        return shutil.copytree(src_path, dst_path, symlinks=symlinks, ignore=ignore)
+    
+    def move(self, src, dst):
+        """Move um arquivo ou diretório"""
+        src_path = self._get_full_path(src)
+        dst_path = self._get_full_path(dst)
+        return shutil.move(src_path, dst_path)
+    
+    def rmtree(self, path):
+        """Remove uma árvore de diretórios recursivamente"""
+        path = self._get_full_path(path)
+        return shutil.rmtree(path)
+    
+    # Operações do os
+    def remove(self, path):
+        """Remove um arquivo"""
+        os.remove(self._get_full_path(path))
+    
+    def rmdir(self, path):
+        """Remove um diretório vazio"""
+        os.rmdir(self._get_full_path(path))
+    
+    def mkdir(self, path, mode=0o755):
+        """Cria um diretório"""
+        os.mkdir(self._get_full_path(path), mode)
+    
+    def makedirs(self, path, mode=0o755, exist_ok=False):
+        """Cria diretórios recursivamente"""
+        os.makedirs(self._get_full_path(path), mode, exist_ok=exist_ok)
+    
+    def rename(self, src, dst):
+        """Renomeia/move um arquivo ou diretório"""
+        src_path = self._get_full_path(src)
+        dst_path = self._get_full_path(dst)
+        os.rename(src_path, dst_path)
+    
+    def listdir(self, path="."):
+        """Lista o conteúdo de um diretório"""
+        return os.listdir(self._get_full_path(path))
+    
+    def walk(self, top=".", topdown=True, onerror=None, followlinks=False):
+        """Percorre uma árvore de diretórios"""
+        return os.walk(self._get_full_path(top), topdown=topdown, onerror=onerror, followlinks=followlinks)
+    
+    # Operações de informação
+    def get_size(self, path):
+        """Retorna o tamanho do arquivo em bytes"""
+        return os.path.getsize(self._get_full_path(path))
+    
+    def get_mtime(self, path):
+        """Retorna o tempo de modificação do arquivo"""
+        return os.path.getmtime(self._get_full_path(path))
+    
+    def get_ctime(self, path):
+        """Retorna o tempo de criação do arquivo"""
+        return os.path.getctime(self._get_full_path(path))
+    
+    def get_atime(self, path):
+        """Retorna o tempo de último acesso do arquivo"""
+        return os.path.getatime(self._get_full_path(path))
+    
+    # Operações de busca
+    def glob(self, pattern):
+        """Busca arquivos usando padrão glob"""
+        pattern_path = self._get_full_path(pattern)
+        results = glob.glob(pattern_path)
+        # Retorna caminhos relativos ao diretório do usuário
+        return [os.path.relpath(result, self.user_dir) for result in results]
+    
+    # Operações de disco
+    def disk_usage(self, path="."):
+        """Retorna estatísticas de uso do disco"""
+        return shutil.disk_usage(self._get_full_path(path))
+    
+    # Operações com permissões
+    def chmod(self, path, mode):
+        """Altera as permissões do arquivo"""
+        os.chmod(self._get_full_path(path), mode)
+    
+    # Operações com caminhos
+    def join(self, *paths):
+        """Junta caminhos dentro do diretório do usuário"""
+        return os.path.join(self.user_dir, *paths)
+    
+    def abspath(self, path):
+        """Retorna o caminho absoluto dentro do diretório do usuário"""
+        return self._get_full_path(path)
+    
+    def relpath(self, path):
+        """Retorna o caminho relativo ao diretório do usuário"""
+        full_path = self._get_full_path(path)
+        return os.path.relpath(full_path, self.user_dir)
+    
+    def basename(self, path):
+        """Retorna o nome base do caminho"""
+        return os.path.basename(path)
+    
+    def dirname(self, path):
+        """Retorna o diretório do caminho"""
+        return os.path.dirname(path)
+    
+    def split(self, path):
+        """Divide o caminho em diretório e nome do arquivo"""
+        return os.path.split(path)
+    
+    def splitext(self, path):
+        """Divide a extensão do arquivo"""
+        return os.path.splitext(path)
+    
+    # Operações especiais
+    def which(self, cmd):
+        """Encontra o caminho de um executável (dentro do diretório do usuário)"""
+        # Primeiro verifica no PATH do usuário
+        user_paths = os.environ.get('PATH', '').split(os.pathsep)
+        for path in user_paths:
+            if path.startswith(self.user_dir):
+                full_path = os.path.join(path, cmd)
+                if os.path.exists(full_path) and os.access(full_path, os.X_OK):
+                    return full_path
+        return None
+    
+    def make_archive(self, base_name, format, root_dir=None, base_dir=None):
+        """Cria um arquivo compactado"""
+        if root_dir is None:
+            root_dir = self.user_dir
+        else:
+            root_dir = self._get_full_path(root_dir)
+        
+        if base_dir is not None:
+            base_dir = self._get_full_path(base_dir)
+        
+        return shutil.make_archive(
+            self._get_full_path(base_name),
+            format,
+            root_dir,
+            base_dir
+        )
+    
+    def unpack_archive(self, filename, extract_dir=None, format=None):
+        """Extrai um arquivo compactado"""
+        filename_path = self._get_full_path(filename)
+        
+        if extract_dir is None:
+            extract_dir = self.user_dir
+        else:
+            extract_dir = self._get_full_path(extract_dir)
+        
+        return shutil.unpack_archive(filename_path, extract_dir, format)
+    def archive(self, file):
+        nome = file.split('/')[-1].split(".")[0]
+        with open(self._get_full_path(file), "rb") as f:
+            string = base64.b64encode(f.read())
+        with open(f"{root}/users/{user}/archived/{nome}", "w") as f:
+        	f.write(string)
+    def unarchive(self, archived_file):
+        nome = archived_file.split('/')[-1].split(".")[0]
+    
+        # Lê o conteúdo codificado em base64 do arquivo arquivado
+        with open(f"{root}/users/{user}/archived/{archived_file}", "r") as f:
+            encoded_string = f.read()
+    
+        # Decodifica o conteúdo base64
+        file_data = base64.b64decode(encoded_string)
+    
+        # Escreve o arquivo original no local desejado
+        with open(f"{root}/users/{user}/{nome}", "wb") as f:
+            f.write(file_data)
+    
+
+ 
 def verificar_arquivos_corrompidos(diretorio, algoritmo='md5', arquivo_hash=None):
     """
     Verifica recursivamente se há arquivos corrompidos em um diretório.
@@ -3469,6 +3706,40 @@ for com in dir(builtins):
 	if com != "open":
 		b_filt.__dict__[com] = getattr(builtins, com)
 
+def login(usuario, senha=""):
+	global user
+	if os.path.exists(f"/users/{user}/data/password"):
+		with open(f"/users/{user}/data/password", "r") as f:
+			senhacod = f.read()
+			password = base64.b64decode(senhacod).decode("utf-8")
+	else:
+		password = senha
+	if senha == password:
+		user = usuario
+		return user_files()
+	else:
+		raise PermissionError("Incorrect password for user {usuario}")
+	
+def reg_user(usuario, senha=""):
+	os.makedirs(f"/users/{usuario}/data/home", exist_ok=True)
+	os.makedirs(f"/user/{usuario}/apps", exist_ok=True)
+	os.makedirs(f"/users/{usuario}/archived", exist_ok=True)
+	if senha != "":
+		with open(f'/users/{usuario}/data/password', 'w') as f:
+			f.write(base64.b64encode(senha.encode("utf-8")))
+
+def del_user(usuario, senha=""):
+	if os.path.exists(f"/users/{usuario}"):
+		with open(f"/users/{usuario}/data/password", "r"):
+			password = base64.b64decode(f.read()).decode("utf-8")
+	else:
+		password = senha
+	
+	if senha == password:
+		shutil.rmtree(f"/user/{usuario}")
+	else:
+		raise PermissionError("Incorrect password for user {usuario}")
+
 
 APPC = {
 "__name__": "__app__",
@@ -3496,7 +3767,11 @@ APPC = {
 "exec_aex": exec_aex_app,
 "__colors__": Cores,
 "gdioad": gdioad,
-"sharedata": sharedata
+"sharedata": sharedata,
+"user_files": user_files,
+"login": login,
+"reg_user": reg_user,
+"del_user": del_user
 }
 
 
@@ -3545,7 +3820,11 @@ SYSC = {
 "exec_aex": exec_aex,
 "__colors__": Cores,
 "gdioad": gdioad,
-"sharedata": sharedata
+"sharedata": sharedata,
+"user_files": user_files,
+"login": login,
+"reg_user": reg_user,
+"del_user": del_user
 }
 
 class hw_instan_return:
@@ -3657,7 +3936,11 @@ SHC = {
 "keyboard": keyboard if infos["kb_forced_reboot_key"] else None,
 "exec_aex": exec_aex,
 "__colors__": Cores,
-"sharedata": sharedata
+"sharedata": sharedata,
+"user_files": user_files,
+"login": login,
+"reg_user": reg_user,
+"del_user": del_user
 }
 
 class HWIW:
@@ -4482,6 +4765,8 @@ if __name__ == "__main__" and "default" in bootcfg["init"]:
 	automount = list(filter(lambda x: x.endswith(".mnt"), os.listdir()))
 	for file in automount:
 		try:
+			del config
+			config = configparser.ConfigParser()
 			config.read(file)
 			cond = config["conf"]["cond"]
 			nomefs = config["conf"]["fsname"]
@@ -4500,6 +4785,8 @@ if __name__ == "__main__" and "default" in bootcfg["init"]:
 	autoumount = list(filter(lambda x: x.endswith(".umnt"), os.listdir()))
 	for file in automount:
 		try:
+			del config
+			config = configparser.ConfigParser()
 			config.read(file)
 			cond = config["conf"]["cond"]
 			nomefs = config["conf"]["fsname"]
