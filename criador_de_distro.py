@@ -12,6 +12,7 @@ import urllib.request
 import urllib.error
 import base64
 import json
+import threading
 def get_github_file_content_raw():
     """
     Obtém o conteúdo do arquivo usando a URL raw do GitHub.
@@ -38,6 +39,8 @@ def get_github_file_content_raw():
     except Exception as e:
         return f"Erro inesperado: {e}"
 
+
+
 class AuroxDistroCreator:
     def __init__(self, root):
         self.root = root
@@ -47,6 +50,9 @@ class AuroxDistroCreator:
         # Variáveis
         self.current_project_path = None
         self.current_file = None
+        self.test_process = None
+        self.test_running = False
+        self.test_window = None
         
         self.setup_ui()
         
@@ -124,18 +130,17 @@ class AuroxDistroCreator:
         self.tree.bind("<Double-1>", self.on_tree_double_click)
         
     def setup_editor(self):
-        
         # Toolbar do editor
         editor_toolbar = ttk.Frame(self.right_frame)
         editor_toolbar.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Button(editor_toolbar, text="Salvar", command=self.save_file).pack(side=tk.LEFT)
         ttk.Button(editor_toolbar, text="Executar", command=self.run_code).pack(side=tk.LEFT, padx=(5,0))
+        ttk.Button(editor_toolbar, text="🧪 Testar Distro", command=self.test_distribution).pack(side=tk.LEFT, padx=(5,0))
         
         # Área do editor
         self.editor_frame = ttk.Frame(self.right_frame)
         self.editor_frame.pack(fill=tk.BOTH, expand=True)
-        
         
         self.text_editor = scrolledtext.ScrolledText(
             self.editor_frame, 
@@ -146,10 +151,196 @@ class AuroxDistroCreator:
         )
         self.text_editor.pack(fill=tk.BOTH, expand=True)
         
-        
         # Configurar tags para syntax highlighting básico
         self.setup_syntax_highlighting()
+    
+    def test_distribution(self):
+        """Testa a distribuição Aurox com I/O em tempo real"""
+        if not self.current_project_path:
+            messagebox.showwarning("Aviso", "Abra um projeto Aurox primeiro")
+            return
         
+        # Criar janela de teste
+        self.test_window = tk.Toplevel(self.root)
+        self.test_window.title("🧪 Testador de Distribuição Aurox")
+        self.test_window.geometry("800x600")
+        
+        # Frame principal
+        main_frame = ttk.Frame(self.test_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Área de output
+        ttk.Label(main_frame, text="Saída do Kernel:", font=("Arial", 10, "bold")).pack(anchor="w")
+        
+        output_frame = ttk.Frame(main_frame)
+        output_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.output_text = scrolledtext.ScrolledText(
+            output_frame, 
+            wrap=tk.WORD,
+            font=("Consolas", 9),
+            bg="black",
+            fg="white",
+            state=tk.DISABLED
+        )
+        self.output_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Área de input
+        ttk.Label(main_frame, text="Comando:", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10,0))
+        
+        input_frame = ttk.Frame(main_frame)
+        input_frame.pack(fill=tk.X, pady=5)
+        
+        self.input_entry = ttk.Entry(input_frame, font=("Consolas", 10))
+        self.input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0,5))
+        self.input_entry.bind("<Return>", self.send_command)
+        
+        ttk.Button(input_frame, text="Enviar", command=self.send_command).pack(side=tk.RIGHT)
+        
+        # Botões de controle
+        control_frame = ttk.Frame(main_frame)
+        control_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Button(control_frame, text="▶️ Iniciar", command=self.start_distro_test).pack(side=tk.LEFT, padx=(0,5))
+        ttk.Button(control_frame, text="⏹ Parar", command=self.stop_distro_test).pack(side=tk.LEFT, padx=(0,5))
+        ttk.Button(control_frame, text="🧹 Limpar", command=self.clear_output).pack(side=tk.LEFT)
+        ttk.Button(control_frame, text="💾 Salvar Log", command=self.save_log).pack(side=tk.RIGHT)
+        
+        # Bind para fechar a janela corretamente
+        self.test_window.protocol("WM_DELETE_WINDOW", self.stop_distro_test)
+        
+        self.append_output("✅ Testador de Distribuição pronto!\n")
+        self.append_output("Clique em 'Iniciar' para testar sua distribuição Aurox\n")
+
+    def start_distro_test(self):
+        """Inicia o teste da distribuição"""
+        if self.test_running:
+            self.append_output("⚠️ Teste já está em execução\n")
+            return
+        
+        try:
+            # Verificar se o kernel.py existe
+            kernel_path = os.path.join(self.current_project_path, "kernel.py")
+            if not os.path.exists(kernel_path):
+                self.append_output("❌ kernel.py não encontrado no projeto\n")
+                return
+            
+            # Criar processo para executar o kernel
+            self.test_process = subprocess.Popen(
+                [sys.executable, kernel_path],
+                cwd=self.current_project_path,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            
+            self.test_running = True
+            self.append_output("🚀 Iniciando distribuição Aurox...\n")
+            self.append_output(f"📁 Diretório: {self.current_project_path}\n")
+            
+            # Iniciar thread para ler output
+            self.output_thread = threading.Thread(target=self.read_process_output, daemon=True)
+            self.output_thread.start()
+            
+            # Focar no input
+            self.input_entry.focus()
+            
+        except Exception as e:
+            self.append_output(f"❌ Erro ao iniciar teste: {e}\n")
+
+    def stop_distro_test(self):
+        """Para o teste da distribuição"""
+        if self.test_process and self.test_running:
+            try:
+                self.test_process.terminate()
+                self.test_process.wait(timeout=5)
+            except:
+                self.test_process.kill()
+            finally:
+                self.test_running = False
+                self.append_output("🛑 Teste interrompido\n")
+        
+        if hasattr(self, 'test_window') and self.test_window:
+            self.test_window.destroy()
+            self.test_window = None
+
+    def read_process_output(self):
+        """Lê o output do processo em tempo real"""
+        while self.test_running and self.test_process:
+            try:
+                output = self.test_process.stdout.readline()
+                if output:
+                    self.append_output(output)
+                    
+                elif self.test_process.poll() is not None:
+                    break
+            except:
+                break
+        
+        # Processo terminou
+        if self.test_running:
+            self.append_output("💤 Processo terminou\n")
+            self.test_running = False
+
+    def send_command(self, event=None):
+        """Envia comando para o processo"""
+        if not self.test_running or not self.test_process:
+            self.append_output("⚠️ Nenhum teste em execução\n")
+            return
+        
+        command = self.input_entry.get().strip()
+        if not command:
+            return
+        
+        try:
+           self.append_output(f"{command}\n")
+           self.test_process.stdin.write(command + "\n")
+           self.test_process.stdin.flush()
+           self.input_entry.delete(0, tk.END)
+        
+        except Exception as e:
+            self.append_output(f"❌ Erro ao enviar comando: {e}\n")
+
+    def append_output(self, text):
+        """Adiciona texto à área de output de forma thread-safe"""
+        def update_output():
+            if hasattr(self, 'output_text') and self.output_text.winfo_exists():
+                self.output_text.config(state=tk.NORMAL)
+                self.output_text.insert(tk.END, text)
+                self.output_text.see(tk.END)
+                self.output_text.config(state=tk.DISABLED)
+        
+        # Usar after para atualização thread-safe
+        self.root.after(0, update_output)
+
+    def clear_output(self):
+        """Limpa a área de output"""
+        if hasattr(self, 'output_text') and self.output_text.winfo_exists():
+            self.output_text.config(state=tk.NORMAL)
+            self.output_text.delete(1.0, tk.END)
+            self.output_text.config(state=tk.DISABLED)
+
+    def save_log(self):
+        """Salva o log do teste"""
+        if hasattr(self, 'output_text') and self.output_text.winfo_exists():
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".log",
+                filetypes=[("Log files", "*.log"), ("Text files", "*.txt")]
+            )
+            if filename:
+                try:
+                    content = self.output_text.get(1.0, tk.END)
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    self.append_output(f"💾 Log salvo em: {filename}\n")
+                except Exception as e:
+                    messagebox.showerror("Erro", f"Erro ao salvar log: {e}")
+    
+    
+    
     
     
     def setup_syntax_highlighting(self):
@@ -161,6 +352,7 @@ class AuroxDistroCreator:
         self.text_editor.tag_configure("number", foreground="darkred")
         self.text_editor.tag_configure("bool", foreground="#0099CC")
         self.text_editor.tag_configure("decorator", foreground="#9800FF")
+        self.text_editor.tag_configure("aurox_func", foreground="#00FF94")
         
         # Bind eventos para syntax highlighting
         self.text_editor.bind("<KeyRelease>", self.on_key_release)
@@ -184,6 +376,7 @@ class AuroxDistroCreator:
         self.highlight_strings()
         
         self.highlight_functions()
+        self.highlight_aurox_funcs()
         
         # Destacar números
         self.highlight_numbers()
@@ -211,6 +404,18 @@ class AuroxDistroCreator:
                 self.text_editor.tag_add("keyword", start, end)
                 start = end
 
+    def highlight_aurox_funcs(self):
+        aurox_functions = ["VED", "matar_proc", "listar_proc", "IPC", "ler_IPC", "limpar_IPC", "criar_processo_filho", "listpkg", "usepkg", "checkpkg", "os", "time", "shutil", "random", "import2", "sys_pid", "domestico", "LFV", "keyboard", "__colors__", "gdioad", "sharedata", "user_files", "login", "reg_user", "del_user", "mnt", "umnt", "configurar_fs", "MCA", "distro", "pwroff_krnl", "debug", "CPFS", "initapp", "reboot", "installpkg", "delpkg", "addperm", "delperm", "default_perm", "auroxperm", "LinuxFs", "exec_aex", "APPC", "SYSC", "perm_padrao", "appperms"]
+        
+        for func in aurox_functions:
+            start = "1.0"
+            while True:
+                start = self.text_editor.search(rf'\y{func}\y', start, stopindex=tk.END, regexp=True)
+                if not start:
+                    break
+                end = f"{start}+{len(func)}c"
+                self.text_editor.tag_add("aurox_func", start, end)
+                start = end
     def highlight_bools(self):
         # Palavras-chave Python (seu código original que funciona)
         bools = ["None", "True", "False"]
