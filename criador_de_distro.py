@@ -136,7 +136,7 @@ class AuroxDistroCreator:
         
         ttk.Button(editor_toolbar, text="Salvar", command=self.save_file).pack(side=tk.LEFT)
         ttk.Button(editor_toolbar, text="Executar", command=self.run_code).pack(side=tk.LEFT, padx=(5,0))
-        ttk.Button(editor_toolbar, text="🧪 Testar Distro", command=self.test_distribution).pack(side=tk.LEFT, padx=(5,0))
+        ttk.Button(editor_toolbar, text="Testar Distro", command=self.test_distribution).pack(side=tk.LEFT, padx=(5,0))
         
         # Área do editor
         self.editor_frame = ttk.Frame(self.right_frame)
@@ -162,7 +162,7 @@ class AuroxDistroCreator:
         
         # Criar janela de teste
         self.test_window = tk.Toplevel(self.root)
-        self.test_window.title("🧪 Testador de Distribuição Aurox")
+        self.test_window.title("Testador de Distribuição Aurox")
         self.test_window.geometry("800x600")
         
         # Frame principal
@@ -185,6 +185,9 @@ class AuroxDistroCreator:
         )
         self.output_text.pack(fill=tk.BOTH, expand=True)
         
+        # Configurar cores do terminal
+        self.setup_terminal_colors()
+        
         # Área de input
         ttk.Label(main_frame, text="Comando:", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10,0))
         
@@ -201,28 +204,44 @@ class AuroxDistroCreator:
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=tk.X, pady=10)
         
-        ttk.Button(control_frame, text="▶️ Iniciar", command=self.start_distro_test).pack(side=tk.LEFT, padx=(0,5))
-        ttk.Button(control_frame, text="⏹ Parar", command=self.stop_distro_test).pack(side=tk.LEFT, padx=(0,5))
-        ttk.Button(control_frame, text="🧹 Limpar", command=self.clear_output).pack(side=tk.LEFT)
-        ttk.Button(control_frame, text="💾 Salvar Log", command=self.save_log).pack(side=tk.RIGHT)
+        ttk.Button(control_frame, text="▶Iniciar", command=self.start_distro_test).pack(side=tk.LEFT, padx=(0,5))
+        ttk.Button(control_frame, text="Parar", command=self.stop_distro_test).pack(side=tk.LEFT, padx=(0,5))
+        ttk.Button(control_frame, text="Limpar", command=self.clear_output).pack(side=tk.LEFT)
+        ttk.Button(control_frame, text="Salvar Log", command=self.save_log).pack(side=tk.RIGHT)
         
         # Bind para fechar a janela corretamente
         self.test_window.protocol("WM_DELETE_WINDOW", self.stop_distro_test)
         
-        self.append_output("✅ Testador de Distribuição pronto!\n")
+        self.append_output("[Testador de Distribuição pronto!\n")
         self.append_output("Clique em 'Iniciar' para testar sua distribuição Aurox\n")
+
+    def setup_terminal_colors(self):
+        """Configura as cores básicas do terminal"""
+        # Cores 4-bit
+        colors_4bit = {
+            '30': '#000000', '31': '#FF0000', '32': '#00FF00', '33': '#FFFF00',
+            '34': '#0000FF', '35': '#FF00FF', '36': '#00FFFF', '37': '#FFFFFF',
+            '90': '#808080', '91': '#FF8080', '92': '#80FF80', '93': '#FFFF80',
+            '94': '#8080FF', '95': '#FF80FF', '96': '#80FFFF', '97': '#FFFFFF'
+        }
+        
+        for code, color in colors_4bit.items():
+            self.output_text.tag_configure(f"color_{code}", foreground=color)
+        
+        # Tag reset
+        self.output_text.tag_configure("reset", foreground="white")
 
     def start_distro_test(self):
         """Inicia o teste da distribuição"""
         if self.test_running:
-            self.append_output("⚠️ Teste já está em execução\n")
+            self.append_output("⚠Teste já está em execução\n")
             return
         
         try:
             # Verificar se o kernel.py existe
             kernel_path = os.path.join(self.current_project_path, "kernel.py")
             if not os.path.exists(kernel_path):
-                self.append_output("❌ kernel.py não encontrado no projeto\n")
+                self.append_output("kernel.py não encontrado no projeto\n")
                 return
             
             # Criar processo para executar o kernel
@@ -238,8 +257,8 @@ class AuroxDistroCreator:
             )
             
             self.test_running = True
-            self.append_output("🚀 Iniciando distribuição Aurox...\n")
-            self.append_output(f"📁 Diretório: {self.current_project_path}\n")
+            self.append_output("Iniciando distribuição Aurox...\n")
+            self.append_output(f"Diretório: {self.current_project_path}\n")
             
             # Iniciar thread para ler output
             self.output_thread = threading.Thread(target=self.read_process_output, daemon=True)
@@ -249,7 +268,7 @@ class AuroxDistroCreator:
             self.input_entry.focus()
             
         except Exception as e:
-            self.append_output(f"❌ Erro ao iniciar teste: {e}\n")
+            self.append_output(f"Erro ao iniciar teste: {e}\n")
 
     def stop_distro_test(self):
         """Para o teste da distribuição"""
@@ -261,7 +280,7 @@ class AuroxDistroCreator:
                 self.test_process.kill()
             finally:
                 self.test_running = False
-                self.append_output("🛑 Teste interrompido\n")
+                self.append_output("Teste interrompido\n")
         
         if hasattr(self, 'test_window') and self.test_window:
             self.test_window.destroy()
@@ -282,13 +301,13 @@ class AuroxDistroCreator:
         
         # Processo terminou
         if self.test_running:
-            self.append_output("💤 Processo terminou\n")
+            self.append_output("Processo terminou\n")
             self.test_running = False
 
     def send_command(self, event=None):
         """Envia comando para o processo"""
         if not self.test_running or not self.test_process:
-            self.append_output("⚠️ Nenhum teste em execução\n")
+            self.append_output("⚠Nenhum teste em execução\n")
             return
         
         command = self.input_entry.get().strip()
@@ -296,25 +315,94 @@ class AuroxDistroCreator:
             return
         
         try:
-           self.append_output(f"{command}\n")
-           self.test_process.stdin.write(command + "\n")
-           self.test_process.stdin.flush()
-           self.input_entry.delete(0, tk.END)
+            self.append_output(f"{command}\n")
+            self.test_process.stdin.write(command + "\n")
+            self.test_process.stdin.flush()
+            self.input_entry.delete(0, tk.END)
         
         except Exception as e:
-            self.append_output(f"❌ Erro ao enviar comando: {e}\n")
+            self.append_output(f"Erro ao enviar comando: {e}\n")
 
     def append_output(self, text):
-        """Adiciona texto à área de output de forma thread-safe"""
+        """Adiciona texto à área de output processando cores"""
         def update_output():
             if hasattr(self, 'output_text') and self.output_text.winfo_exists():
                 self.output_text.config(state=tk.NORMAL)
-                self.output_text.insert(tk.END, text)
+                
+                # Processar cores básicas
+                clean_text = ""
+                i = 0
+                while i < len(text):
+                    if text[i:i+2] == '\033[':
+                        end = text.find('m', i)
+                        if end != -1:
+                            code_str = text[i+2:end]
+                            codes = code_str.split(';')
+                            
+                            # Reset (0)
+                            if codes[0] == '0':
+                                self.output_text.insert(tk.END, "", "reset")
+                            
+                            # 4-bit colors
+                            elif codes[0] in ['30','31','32','33','34','35','36','37','90','91','92','93','94','95','96','97']:
+                                tag_name = f"color_{codes[0]}"
+                                content = text[end+1:text.find('\033[', end+1) or len(text)]
+                                self.output_text.insert(tk.END, content, tag_name)
+                                clean_text += content
+                                i = end + len(content) + 1
+                                continue
+                            
+                            # 8-bit colors (38;5;n)
+                            elif len(codes) >= 3 and codes[0] == '38' and codes[1] == '5':
+                                color_code = codes[2]
+                                tag_name = f"color_8bit_{color_code}"
+                                if tag_name not in self.output_text.tag_names():
+                                    color = self.get_8bit_color(color_code)
+                                    self.output_text.tag_configure(tag_name, foreground=color)
+                                
+                                content = text[end+1:text.find('\033[', end+1) or len(text)]
+                                self.output_text.insert(tk.END, content, tag_name)
+                                clean_text += content
+                                i = end + len(content) + 1
+                                continue
+                    
+                    # Caractere normal
+                    clean_text += text[i]
+                    self.output_text.insert(tk.END, text[i])
+                    i += 1
+                
                 self.output_text.see(tk.END)
                 self.output_text.config(state=tk.DISABLED)
         
-        # Usar after para atualização thread-safe
         self.root.after(0, update_output)
+
+    def get_8bit_color(self, code):
+        """Retorna cor 8-bit (256 cores) simplificada"""
+        try:
+            idx = int(code)
+            
+            if idx < 16:
+                # Reusa cores 4-bit
+                colors_4bit = {
+                    '0': '#000000', '1': '#FF0000', '2': '#00FF00', '3': '#FFFF00',
+                    '4': '#0000FF', '5': '#FF00FF', '6': '#00FFFF', '7': '#FFFFFF',
+                    '8': '#808080', '9': '#FF8080', '10': '#80FF80', '11': '#FFFF80',
+                    '12': '#8080FF', '13': '#FF80FF', '14': '#80FFFF', '15': '#FFFFFF'
+                }
+                return colors_4bit.get(str(idx), '#FFFFFF')
+            elif idx < 232:
+                # Cores RGB
+                idx -= 16
+                r = (idx // 36) * 51
+                g = ((idx % 36) // 6) * 51
+                b = (idx % 6) * 51
+                return f'#{r:02x}{g:02x}{b:02x}'
+            else:
+                # Escala de cinza
+                gray = (idx - 232) * 10 + 8
+                return f'#{gray:02x}{gray:02x}{gray:02x}'
+        except:
+            return '#FFFFFF'
 
     def clear_output(self):
         """Limpa a área de output"""
@@ -338,10 +426,6 @@ class AuroxDistroCreator:
                     self.append_output(f"💾 Log salvo em: {filename}\n")
                 except Exception as e:
                     messagebox.showerror("Erro", f"Erro ao salvar log: {e}")
-    
-    
-    
-    
     
     def setup_syntax_highlighting(self):
         # Configurações básicas de syntax highlighting para Python
@@ -693,7 +777,7 @@ class AuroxDistroCreator:
                 'modules': {},
                 'tmp': {},
                 'etc': {
-                    'shells.txt': 'default\n',
+                    'shells.txt': 'default[',
                     'shell.txt': 'default',
                     'systemd': {
                         "systemd.py": """# modifique isso para seu codigo do systemd
