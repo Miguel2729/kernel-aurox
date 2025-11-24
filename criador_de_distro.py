@@ -787,57 +787,13 @@ pass
 cond = any(os.path.exists(f'/media/usb{i}') for i in range(10))
 fsname = pen-drive
 fs = /dev/sdb1
-mount_script = |
-    import threading
-    import time
-    import shutil
-    import os
-    
-    def sync_pen_drive():
-        while os.path.exists('../mnt/pen-drive'):
-            # Encontrar pen-drive real
-            pen_drive_path = None
-            for i in range(10):
-                test_path = f'/media/usb{i}'
-                if os.path.exists(test_path):
-                    pen_drive_path = test_path
-                    break
-            
-            if pen_drive_path:
-                mount_point = '../mnt/pen-drive'
-                
-                # Sincronização bidirecional
-                try:
-                    # Do pen-drive para filesystem Aurox
-                    for item in os.listdir(pen_drive_path):
-                        src = os.path.join(pen_drive_path, item)
-                        dst = os.path.join(mount_point, item)
-                        if os.path.isfile(src) and (not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst)):
-                            shutil.copy2(src, dst)
-                    
-                    # Do filesystem Aurox para pen-drive (opcional)
-                    for item in os.listdir(mount_point):
-                        if item not in ['hardware.info', 'servico_hardware.status']:
-                            src = os.path.join(mount_point, item)
-                            dst = os.path.join(pen_drive_path, item)
-                            if os.path.isfile(src) and (not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst)):
-                                shutil.copy2(src, dst)
-                except Exception as e:
-                    print(f"Erro na sincronização: {e}")
-            
-            time.sleep(2)  # Sincronizar a cada 2 segundos
-    
-    # Iniciar sincronização em thread separada
-    sync_thread = threading.Thread(target=sync_pen_drive, daemon=True)
-    sync_thread.start()
-    
-    configurar_fs('pen-drive', 'hardware', 'portable0', {'aut': True})
-wait = 5
+mount_script = configurar_fs("pen-drive", "diretorio", "/media/usb0", {"sync_mode": "mirror", "intervalo": 0.10})
+wait = 1.8
 """,
                         "usb.umnt": """[conf]
 cond = not any(os.path.exists(f'/media/usb{i}') for i in range(10)) and os.path.exists('../mnt/pen-drive')
 fsname = pen-drive
-wait = 5
+wait = 1.8
 """
                     },
                     "interpr": {}
